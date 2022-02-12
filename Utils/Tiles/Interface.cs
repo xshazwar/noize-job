@@ -4,7 +4,7 @@ using UnityEngine;
 
 using static Unity.Mathematics.math;
 
-namespace xshazwar.processing.cpu.mutate {
+namespace xshazwar.noize.cpu.mutate {
     using Unity.Mathematics;    
     public interface ImTileData {
         void Setup(NativeSlice<float> source, int resolution);
