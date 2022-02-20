@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -14,7 +15,7 @@ using xshazwar.noize.scripts;
 
 namespace xshazwar.noize.scripts {
     [RequireComponent(typeof(Texture2D))]
-    public class FBMSource : MonoBehaviour, IProvideTiles, IUpdateImageChannel, IUpdateAllChannels
+    public class FBMSource : MonoBehaviour, IProvideTiles, IUpdateImageChannel, IUpdateAllChannels, IHeightBroadcaster
     {
         public enum FractalNoise {
             Sin,
@@ -62,6 +63,8 @@ namespace xshazwar.noize.scripts {
         NativeSlice<float> green;
         JobHandle jobHandle;
 
+        [HideInInspector]
+        public Action<int, NativeSlice<float>> OnHeightReady {get; set;}
         public bool enabled;
         bool triggered;
 
@@ -96,6 +99,7 @@ namespace xshazwar.noize.scripts {
                     return;
                 }
                 jobHandle.Complete();
+                OnHeightReady?.Invoke(resolution, data);
                 UnityEngine.Profiling.Profiler.BeginSample("Apply Texture");
                 
                 UpdateImageAllChannels();
@@ -120,12 +124,14 @@ namespace xshazwar.noize.scripts {
 
         public void UpdateImageChannel(){
             texture.Apply(false);
+            OnHeightReady?.Invoke(resolution, data);
         }
 
         public void UpdateImageAllChannels(){
             red.CopyFrom(data);
             green.CopyFrom(data);
             texture.Apply(false);
+            OnHeightReady?.Invoke(resolution, data);
         }
 
         public void OnDestroy(){

@@ -1,3 +1,4 @@
+using System;
 using Unity.Collections;
 
 namespace xshazwar.noize.cpu.mutate {
@@ -11,5 +12,14 @@ namespace xshazwar.noize.cpu.mutate {
 
     public interface IUpdateAllChannels {
         public void UpdateImageAllChannels();
+    }
+
+    public interface IHeightBroadcaster {
+        // resolution, data
+        public Action<int, NativeSlice<float>> OnHeightReady {get; set;}
+    }
+
+    public interface IHeightTarget {
+        public void SetHeightValues(int resolution, NativeSlice<float> data);
     }
 }
