@@ -12,5 +12,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 409e5b35f94744e289c19d99c8e4799b, type: 3}
   m_Name: Smooth-2pass
   m_EditorClassIdentifier: 
-  filter: 5
-  iterations: 1
+  filter: 0
+  iterations: 4

@@ -275,7 +275,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: d5aac28480770260aa97637e3e258c09, type: 2}
   mRenderer: {fileID: 583384802}
   input:
-    resolution: 4096
+    resolution: 1024
     xpos: 0
     zpos: 0
   RunMe: 0
