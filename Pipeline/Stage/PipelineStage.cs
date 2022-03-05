@@ -15,6 +15,7 @@ namespace xshazwar.noize.pipeline {
         bool stageTriggered;
 
         StageIO inputData;
+        StageIO inputOverride;
         StageIO outputData;
         public Action<StageIO> OnJobComplete {get; set;}
 
@@ -26,8 +27,14 @@ namespace xshazwar.noize.pipeline {
         // Schedule job with input data.
         // Setup output data
         // Set job handle
+        public void SetOverride(StageIO inputOverride){
+            this.inputOverride = inputOverride;
+        }
+        
         public void ReceiveInput(StageIO inputData){
+            Debug.Log($"Stage: {this.GetType().ToString()} got input of type {inputData.GetType().ToString()}");
             this.inputData = inputData;
+            inputOverride?.ImposeOn(ref this.inputData);
             stageQueued = true;
         }
         // Set input data
@@ -37,9 +44,11 @@ namespace xshazwar.noize.pipeline {
                 if (!jobHandle.IsCompleted){
                     return;
                 }
-                jobHandle.Complete();
-                OnJobComplete?.Invoke(outputData);
                 stageTriggered = false;
+                stageQueued = false;
+                jobHandle.Complete();
+                outputData = inputData; // TODO put this somewhere in the subclass?
+                OnJobComplete?.Invoke(outputData);
             }
             
             if (stageQueued && !stageTriggered){
@@ -48,5 +57,6 @@ namespace xshazwar.noize.pipeline {
                 stageQueued = false;
             }
         }
+        public virtual void OnDestroy(){}
     }
 }

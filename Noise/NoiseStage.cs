@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.Profiling;
 
@@ -9,17 +10,19 @@ using xshazwar.noize.pipeline;
 
 namespace xshazwar.noize.cpu.mutate {
     
+    [System.Serializable]
     public class GeneratorData : StageIO {
-        public int resolution;
-        public int xpos;
-        public int zpos;
+        [Range(8, 4096)]
+        public int resolution = 512;
+        public int xpos = 0;
+        public int zpos = 0;
         public NativeSlice<float> data;
 
-        public GeneratorData(int resolution, int xpos, int zpos, NativeSlice<float> data){
-            this.resolution = resolution;
-            this.xpos = xpos;
-            this.zpos = zpos;
-            this.data = data;
+        public override void ImposeOn(ref StageIO d){
+            GeneratorData data = (GeneratorData) d;
+            data.resolution = resolution;
+            data.xpos = xpos;
+            data.zpos = zpos;
         }
     }
     [CreateAssetMenu(fileName = "NoiseGenerator", menuName = "Noize/Generators/NoiseSource", order = 1)]
@@ -49,16 +52,24 @@ namespace xshazwar.noize.cpu.mutate {
         [Range(0f, 1f)]
         public float hurst = 0f;
         
+        [Range(.5f, 5f)]
+        public float startingAmplitude = 1f;
+        
         [Range(1, 24)]
         public int octaves = 1;
+
+        [Range(1.8f, 2.2f)]
+        public float stepdown = 2f;
+        
+        [Range(-.05f, .05f)]
+        public float detuneRate = 0f;
 
         [Range(5, 10000)]
         public int noiseSize = 1000;
         public override void Schedule( StageIO req ){
             GeneratorData d = (GeneratorData) req;
-            Debug.Log($"{d.resolution}, {d.xpos}, {d.zpos}, {d.data.Length}");
             jobHandle = jobs[(int)noiseType](
-                d.data, d.resolution, hurst, octaves, d.xpos, d.zpos, noiseSize, default);
+                d.data, d.resolution, hurst, startingAmplitude, stepdown, detuneRate, octaves, d.xpos, d.zpos, noiseSize, default);
         }
     }
 }

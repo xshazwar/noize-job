@@ -6,17 +6,6 @@ using static Unity.Mathematics.math;
 
 namespace xshazwar.noize.cpu.mutate {
     using Unity.Mathematics;
-    
-    // public interface ICreateTiles {
-    //     // total resolution including margin
-    //     int JobLength {get; set;}
-    //     int Resolution {get; set;}
-    //     float _terrain_width {get; set;}
-    //     float _terrain_height {get; set;}
-
-    //     float pixel_size_ws {get; set;} // => _terrain_width / Resolution;
-    //     void Execute<T>(int i, T tile) where  T : struct, IWriteOnlyTile; 
-    // }
 
     public interface ICommonTileSettings {
         int JobLength {get; set;}
@@ -30,8 +19,11 @@ namespace xshazwar.noize.cpu.mutate {
 
     public interface IFractalSettings {
         public float Hurst {get; set;}
+        public float StartingAmplitude {get; set;}
         public int OctaveCount {get; set;}
         public int NoiseSize {get; set;}
+        public float StepDown {get; set;}
+        public float DetuneRate {get; set;}
         public float NormalizationValue {get; set;}
     }
 
@@ -50,6 +42,12 @@ namespace xshazwar.noize.cpu.mutate {
         void Execute<T, V>(int i, T tileA, V tileB) 
                 where  T : struct, IRWTile
                 where V: struct, IReadOnlyTile; 
+    }
+
+    public interface IApplyCurve: ICommonTileSettings {
+        public int CurveSize {get; set;}
+        public void Setup(int resolution, int jobLength, int curveSize);
+        void Execute<T>(int i, T tile, NativeSlice<float> curve) where  T : struct, IRWTile;
     }
 
     public interface IKernelData {

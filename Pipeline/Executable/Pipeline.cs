@@ -17,8 +17,12 @@ namespace xshazwar.noize.pipeline {
         StageIO pipelineInput;
         StageIO pipelineOutput;
         
+        // This is a list of stages, but references the type and must be instantiated
         [SerializeField]
         private List<PipelineStage> stages;
+
+        private List<PipelineStage> stage_instances;
+
         public Action<StageIO> OnJobComplete {get; set;}
 
         public void Start(){
@@ -30,9 +34,6 @@ namespace xshazwar.noize.pipeline {
             Setup();
             AfterStart();
         }
-
-        public abstract void BeforeStart();
-        public abstract void AfterStart();
 
         public void Schedule(StageIO requirements, Action<StageIO> onResult){
             if (stages == null){
@@ -53,24 +54,21 @@ namespace xshazwar.noize.pipeline {
             OnPipelineComplete();
         }
 
-        public abstract void OnPipelineComplete();
-        // Cleanup, etc
-
         public void Setup(){
-            PipelineStage previousStage = null;
+            stage_instances = new List<PipelineStage>();
             foreach(PipelineStage stage in stages){
+                stage_instances.Add(UnityEngine.Object.Instantiate(stage));
+            }
+            PipelineStage previousStage = null;
+            foreach(PipelineStage stage in stage_instances){
                 if(previousStage != null){
                     previousStage.OnJobComplete += stage.ReceiveInput;
                 }
                 previousStage = stage;
             }
-            stages[stages.Count - 1].OnJobComplete += OnFinalStageComplete;
+            stage_instances[stages.Count - 1].OnJobComplete += OnFinalStageComplete;
+            Debug.Log("Pipeline Setup Complete");
         }
-        
-        public abstract void BeforeUpdate();
-        // Anything to be done before scheduling
-        public abstract void AfterUpdate();
-        // Anything to be done before scheduling
 
         public void Update(){
             BeforeUpdate();
@@ -80,18 +78,42 @@ namespace xshazwar.noize.pipeline {
 
         public void OnUpdate(){
             if (pipelineRunning){
-                foreach(PipelineStage stage in stages){
+                foreach(PipelineStage stage in stage_instances){
                     stage.OnUpdate();
                 }
             }
             
             if (pipelineQueued && !pipelineRunning){
                 pipelineRunning = true;
-                stages[0].ReceiveInput(pipelineInput);
+                stage_instances[0].ReceiveInput(pipelineInput);
                 pipelineQueued = false;
             }
 
         }
 
+        protected void CleanUpStages(){
+            foreach(PipelineStage stage in stage_instances){
+                try{
+                    stage.OnDestroy();
+                }catch(Exception err){
+                    Debug.LogError(err);
+                }
+            }
+        }
+
+        void OnDestroy()
+        {
+            CleanUpStages();
+        }
+        
+        // Lifecycle Hooks
+        protected virtual void BeforeStart(){}
+        protected virtual void AfterStart(){}
+        protected virtual void OnPipelineComplete(){}
+        // Cleanup, etc
+        protected virtual void BeforeUpdate(){}
+        // Anything to be done before scheduling
+        protected virtual void AfterUpdate(){}
+        // Anything to be done before scheduling
     }
 }

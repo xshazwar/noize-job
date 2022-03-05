@@ -81,7 +81,7 @@ namespace xshazwar.noize.scripts {
 
         void GenerateTexture () {
             jobHandle = jobs[(int)noiseType](
-                data, resolution, hurst, octaves, xpos, zpos, noiseSize, default);
+                data, resolution, hurst, 1f, 2f, 0f, octaves, xpos, zpos, noiseSize, default);
             // we don't want to norm to the tile, needs to be globally normed by the generator
             // jobHandle = normStage(
             //     data,

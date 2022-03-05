@@ -30,9 +30,9 @@ namespace xshazwar.noize.cpu.mutate {
             
             int k_off = (KernelSize - 1) / 2;
             float total = 0;
-            for (int k = -k_off; k < k_off; k++){
+            for (int k = -k_off; k <= k_off; k++){
                 int xi = x + k;
-                total += tile.GetData(xi, z) * Kernel[k + k_off];
+                total += tile.GetData(xi, z) * Kernel[k_off + k];
             }
             tile.SetValue(x, z, total * KernelFactor);
         }
@@ -55,9 +55,9 @@ namespace xshazwar.noize.cpu.mutate {
         public void ApplyKernel<T>(int x, int z, T tile) where  T : struct, IRWTile{
             int k_off = (KernelSize - 1) / 2;
             float total = 0;
-            for (int k = -k_off; k < k_off; k++){
+            for (int k = k_off; k >= -k_off; k--){
                 int zi = z + k;
-                total += tile.GetData(x, zi) * Kernel[k + k_off];
+                total += tile.GetData(x, zi) * Kernel[k_off - k];
             }
             tile.SetValue(x, z, total * KernelFactor);
         }
@@ -104,7 +104,6 @@ namespace xshazwar.noize.cpu.mutate {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void ApplyKernel<T>(int x, int z, T tile) where  T : struct, IRWTile{
             int k_off = (KernelSize - 1) / 2;
-            float total = 0;
             float min_ = Single.MaxValue;
 
             for (int k = -k_off; k < k_off; k++){

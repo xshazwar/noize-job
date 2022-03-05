@@ -1,3 +1,5 @@
+using System;
+
 using Unity.Collections.LowLevel.Unsafe;
 
 using Unity.Burst;
@@ -73,7 +75,9 @@ namespace xshazwar.noize.cpu.mutate {
         Smooth3,
         Sobel3Horizontal,
         Sobel3Vertical,
-        Sobel3_2D
+        Sobel3_2D,
+        Prewitt3Horizontal,
+        Prewitt3Vertical
     }
 
     public struct SeparableKernelFilter {
@@ -86,137 +90,175 @@ namespace xshazwar.noize.cpu.mutate {
 
         public static float sobel3Factor =  1f;
         public static float[] sobel3_HX = {-1f, 0f, 1f};
-        public static float[] sobel3_HY = {1f, 2f, 1f};
-         public static float[] sobel3_VY = {1f, 0f, -1f};
+        public static float[] sobel3_HZ = {
+            1f,
+            2f,
+            1f
+        };
         public static float[] sobel3_VX = {1f, 2f, 1f};
+        public static float[] sobel3_VZ = {
+            1f, 
+            0f,
+           -1f
+        };
+
+        public static float prewitt3Factor =  1f;
+        public static float[] prewitt3_HX = {1f, 0f, -1f};
+        public static float[] prewitt3_HZ = {
+            1f,
+            1f,
+            1f
+        };
+        public static float[] prewitt3_VX = {1f, 1f, 1f};
+        public static float[] prewitt3_VZ = {
+           -1f, 
+            0f,
+            1f
+        };
+
         
         // Jobs that can operate on the previous steps output
-        private static JobHandle ScheduleSeries(
+        private static JobHandle ScheduleSeries<XO, ZO>(
             NativeSlice<float> src,
+            NativeSlice<float> tmp,
             int resolution,
             int kernelSize,
             NativeArray<float> kernelX,
             NativeArray<float> kernelZ,
             float kernelFactor,
             JobHandle dependency
-        ){
-            NativeArray<float> tmp = new NativeArray<float>(src.Length, Allocator.TempJob);
-            JobHandle first = GenericKernelJob<KernelTileMutation<KernelSampleXOperator>, RWTileData>.ScheduleParallel(
+        ) 
+            where XO: struct, IKernelOperator, IKernelData
+            where ZO: struct, IKernelOperator, IKernelData
+        {
+            UnityEngine.Profiling.Profiler.BeginSample("Schedule X / Y Pass");
+            JobHandle first = GenericKernelJob<KernelTileMutation<XO>, RWTileData>.ScheduleParallel(
                 src, tmp, resolution, kernelSize, kernelX, kernelFactor, dependency
             );
-            JobHandle res = GenericKernelJob<KernelTileMutation<KernelSampleZOperator>, RWTileData>.ScheduleParallel(
+            JobHandle res = GenericKernelJob<KernelTileMutation<ZO>, RWTileData>.ScheduleParallel(
                 src, tmp, resolution, kernelSize, kernelZ, kernelFactor, first
             );
-            return tmp.Dispose(res);
+            UnityEngine.Profiling.Profiler.EndSample();
+            return res;
         }
 
 
-        // Jobs that can operate in parallel and require reduction
-        private static JobHandle SchedulePL<T>(
-            NativeSlice<float> src,
-            int resolution,
-            int kernelSize,
-            NativeArray<float> kernelX,
-            NativeArray<float> kernelZ,
-            float kernelFactor,
-            JobHandle dependency
-        ) where T: struct, IReduceTiles {
-            NativeArray<float> original = new NativeArray<float>(src.Length, Allocator.TempJob);
-            NativeArray<float> tmp0 = new NativeArray<float>(src.Length, Allocator.TempJob);
-            NativeArray<float> tmp1 = new NativeArray<float>(src.Length, Allocator.TempJob);
+        // // Jobs that can operate in parallel and require reduction
+        // private static JobHandle SchedulePL<T>(
+        //     NativeSlice<float> src,
+        //     int resolution,
+        //     int kernelSize,
+        //     NativeArray<float> kernelX,
+        //     NativeArray<float> kernelZ,
+        //     float kernelFactor,
+        //     JobHandle dependency
+        // ) where T: struct, IReduceTiles {
+        //     NativeArray<float> original = new NativeArray<float>(src.Length, Allocator.TempJob);
+        //     NativeArray<float> tmp0 = new NativeArray<float>(src.Length, Allocator.TempJob);
+        //     NativeArray<float> tmp1 = new NativeArray<float>(src.Length, Allocator.TempJob);
             
-            NativeSlice<float> originalS = new NativeSlice<float>(original);
-            NativeSlice<float> tmp0s = new NativeSlice<float>(tmp0);
-            NativeSlice<float> tmp1s = new NativeSlice<float>(tmp1);
+        //     NativeSlice<float> originalS = new NativeSlice<float>(original);
+        //     NativeSlice<float> tmp0s = new NativeSlice<float>(tmp0);
+        //     NativeSlice<float> tmp1s = new NativeSlice<float>(tmp1);
 
-            originalS.CopyFrom(src);
-            JobHandle xPass = GenericKernelJob<KernelTileMutation<KernelSampleXOperator>, RWTileData>.ScheduleParallel(
-                src, tmp0s, resolution, kernelSize, kernelX, kernelFactor, dependency
-            );
-            JobHandle zPass = GenericKernelJob<KernelTileMutation<KernelSampleZOperator>, RWTileData>.ScheduleParallel(
-                originalS, tmp1s, resolution, kernelSize, kernelZ, kernelFactor, dependency
-            );
-            JobHandle allPass = JobHandle.CombineDependencies(xPass, zPass);
-            JobHandle reduce = ReductionJob<T, RWTileData, ReadTileData>.ScheduleParallel(
-                src, originalS, resolution, allPass
-            );
-            return tmp1.Dispose(tmp0.Dispose(original.Dispose(reduce)));
-        }
+        //     originalS.CopyFrom(src);
+        //     JobHandle xPass = GenericKernelJob<KernelTileMutation<KernelSampleXOperator>, RWTileData>.ScheduleParallel(
+        //         src, tmp0s, resolution, kernelSize, kernelX, kernelFactor, dependency
+        //     );
+        //     JobHandle zPass = GenericKernelJob<KernelTileMutation<KernelSampleZOperator>, RWTileData>.ScheduleParallel(
+        //         originalS, tmp1s, resolution, kernelSize, kernelZ, kernelFactor, dependency
+        //     );
+        //     JobHandle allPass = JobHandle.CombineDependencies(xPass, zPass);
+        //     JobHandle reduce = ReductionJob<T, RWTileData, ReadTileData>.ScheduleParallel(
+        //         src, originalS, resolution, allPass
+        //     );
+        //     return tmp1.Dispose(tmp0.Dispose(original.Dispose(reduce)));
+        // }
 
-        private static JobHandle ScheduleSobel2D(
+        private static JobHandle ScheduleReduce<RE, XO, ZO>(
             NativeSlice<float> src,
+            NativeSlice<float> tmp,
+            float[] AX,
+            float[] AZ,
+            float[] BX,
+            float[] BZ,
             int resolution,
             JobHandle dependency
-        ){
-            NativeArray<float> original = new NativeArray<float>(src.Length, Allocator.TempJob);
+        )
+            where RE: struct, IReduceTiles
+            where XO: struct, IKernelOperator, IKernelData
+            where ZO: struct, IKernelOperator, IKernelData
+        {
+            NativeArray<float> original = new NativeArray<float>(src.Length, Allocator.Persistent);
+            NativeSlice<float> originalS = new NativeSlice<float>(original);
+
             src.CopyTo(original);
-            NativeArray<float> kbx_h = new NativeArray<float>(sobel3_HX, Allocator.TempJob);
-            NativeArray<float> kby_h = new NativeArray<float>(sobel3_HY, Allocator.TempJob);
-            NativeArray<float> kbx_v = new NativeArray<float>(sobel3_VX, Allocator.TempJob);
-            NativeArray<float> kby_v = new NativeArray<float>(sobel3_VY, Allocator.TempJob);
-            JobHandle horiz = SchedulePL<MultiplyTiles>(src, resolution, 3, kbx_h, kby_h, 1f, dependency);
-            JobHandle vert = SchedulePL<MultiplyTiles>(original, resolution, 3, kbx_v, kby_v, 1f, dependency);
-            JobHandle allPass = JobHandle.CombineDependencies(horiz, vert);
-            JobHandle reducePass =  ReductionJob<RootSumSquaresTiles, RWTileData, ReadTileData>.ScheduleParallel(
-                src, original, resolution, allPass
+            NativeArray<float> kbx_h = new NativeArray<float>(AX, Allocator.Persistent);
+            NativeArray<float> kbz_h = new NativeArray<float>(AZ, Allocator.Persistent);
+            NativeArray<float> kbx_v = new NativeArray<float>(BX, Allocator.Persistent);
+            NativeArray<float> kbz_v = new NativeArray<float>(BZ, Allocator.Persistent);
+            
+            JobHandle A = ScheduleSeries<XO, ZO>(src, tmp, resolution, 3, kbx_h, kbz_h, 1f, dependency);
+            JobHandle B = ScheduleSeries<XO, ZO>(originalS, tmp, resolution, 3, kbx_v, kbz_v, 1f, A);
+            JobHandle reducePass =  ReductionJob<RE, RWTileData, ReadTileData>.ScheduleParallel(
+                src, originalS, tmp, resolution, B
             );
-            // chain disposal of nativeArrays after job complete
-            return kby_v.Dispose(
-                kbx_v.Dispose(
-                    kby_h.Dispose(
-                        kbx_h.Dispose(
-                            original.Dispose(reducePass)))));
+            var ch1 = JobHandle.CombineDependencies(original.Dispose(reducePass), kbx_h.Dispose(reducePass), kbz_h.Dispose(reducePass));
+            return JobHandle.CombineDependencies(kbx_v.Dispose(reducePass), kbz_v.Dispose(reducePass), ch1);
         }
 
-        public static JobHandle Schedule(NativeSlice<float> src, KernelFilterType filter, int resolution, JobHandle dependency){
+        public static JobHandle Schedule(NativeSlice<float> src, NativeSlice<float> tmp, KernelFilterType filter, int resolution, JobHandle dependency){
             float[] kernelBodyX = smooth3;
-            float[] kernelBodyY = smooth3;
+            float[] kernelBodyZ = smooth3;
             float kernelFactor = smooth3Factor;
             int kernelSize = 3;
 
             switch(filter){
                 case KernelFilterType.Sobel3_2D:
-                    return ScheduleSobel2D(src, resolution, dependency);
+                    return ScheduleReduce<RootSumSquaresTiles, KernelSampleXOperator, KernelSampleZOperator>(src, tmp, sobel3_HX, sobel3_HZ, sobel3_VX, sobel3_VZ, resolution, dependency);
+                    // return ScheduleSobel2D(src, tmp, resolution, dependency);
                 case KernelFilterType.Smooth3:
                     break;
                 case KernelFilterType.Gauss5:
                     kernelBodyX = gauss5;
-                    kernelBodyY = gauss5;
+                    kernelBodyZ = gauss5;
                     kernelFactor = gauss5Factor;
                     kernelSize = 5;
                     break;
                 case KernelFilterType.Gauss3:
                     kernelBodyX = gauss3;
-                    kernelBodyY = gauss3;
+                    kernelBodyZ = gauss3;
                     kernelFactor = gauss3Factor;
                     break;;
                 case KernelFilterType.Sobel3Horizontal:
                     kernelBodyX = sobel3_HX;
-                    kernelBodyY = sobel3_HY;
+                    kernelBodyZ = sobel3_HZ;
                     kernelFactor = sobel3Factor;;
                     break;
                 case KernelFilterType.Sobel3Vertical:
                     kernelBodyX = sobel3_VX;
-                    kernelBodyY = sobel3_VY;
+                    kernelBodyZ = sobel3_VZ;
                     kernelFactor = sobel3Factor;
-                    break;           
-            }
-            NativeArray<float> kbx = new NativeArray<float>(kernelBodyX, Allocator.TempJob);
-            NativeArray<float> kby = new NativeArray<float>(kernelBodyY, Allocator.TempJob);
-            JobHandle res;
-
-            switch(filter){
-                case KernelFilterType.Sobel3Horizontal:
-                case KernelFilterType.Sobel3Vertical:
-                    res = SchedulePL<MultiplyTiles>(src, resolution, kernelSize, kbx, kby, kernelFactor, dependency);
+                    break;   
+                case KernelFilterType.Prewitt3Horizontal:
+                    kernelBodyX = prewitt3_HX;
+                    kernelBodyZ = prewitt3_HZ;
+                    kernelFactor = prewitt3Factor;;
                     break;
-                default:
-                    res = ScheduleSeries(src, resolution, kernelSize, kbx, kby, kernelFactor, dependency);
-                    break;
+                case KernelFilterType.Prewitt3Vertical:
+                    kernelBodyX = prewitt3_VX;
+                    kernelBodyZ = prewitt3_VZ;
+                    kernelFactor = prewitt3Factor;
+                    break;          
             }
+            UnityEngine.Profiling.Profiler.BeginSample("Alloc kbx/y");
+            NativeArray<float> kbx = new NativeArray<float>(kernelBodyX, Allocator.Persistent);
+            NativeArray<float> kbz = new NativeArray<float>(kernelBodyZ, Allocator.Persistent);
+            UnityEngine.Profiling.Profiler.EndSample();
+            JobHandle res = ScheduleSeries<KernelSampleXOperator, KernelSampleZOperator>(src, tmp, resolution, kernelSize, kbx, kbz, kernelFactor, dependency);
             // Dispose of native containers on completion
             return kbx.Dispose(
-                kby.Dispose(
+                kbz.Dispose(
                     res
             ));
             
@@ -224,6 +266,7 @@ namespace xshazwar.noize.cpu.mutate {
     }
     public delegate JobHandle SeperableKernelFilterDelegate (
         NativeSlice<float> src,
+        NativeSlice<float> tmp,
         KernelFilterType filter,
         int resolution,
         JobHandle dependency
@@ -252,11 +295,11 @@ namespace xshazwar.noize.cpu.mutate {
 
         public static JobHandle Schedule(NativeSlice<float> src, int resolution, JobHandle dependency){
             NativeArray<float> kbx = new NativeArray<float>(SeparableKernelFilter.smooth3, Allocator.TempJob);
-            NativeArray<float> kby = new NativeArray<float>(SeparableKernelFilter.smooth3, Allocator.TempJob);
-            JobHandle res = ScheduleSeries(src, resolution, 3, kbx, kby, 1f, dependency);
+            NativeArray<float> kbz = new NativeArray<float>(SeparableKernelFilter.smooth3, Allocator.TempJob);
+            JobHandle res = ScheduleSeries(src, resolution, 3, kbx, kbz, 1f, dependency);
             // Dispose of native containers on completion
             return kbx.Dispose(
-                kby.Dispose(
+                kbz.Dispose(
                     res
             ));
         }

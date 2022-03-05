@@ -12,8 +12,17 @@ using static Unity.Mathematics.math;
 namespace xshazwar.noize.cpu.mutate {
     using Unity.Mathematics;
 
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
     public struct FlushWriteSlice : IJob {
+        
+        [NativeDisableParallelForRestriction]
+        [NativeDisableContainerSafetyRestriction]
+        [ReadOnly]
         NativeSlice<float> read;
+        
+        [NativeDisableParallelForRestriction]
+        [NativeDisableContainerSafetyRestriction]
+        [WriteOnly]
         NativeSlice<float> write;
 
         public static JobHandle Schedule(NativeSlice<float> read_, NativeSlice<float> write_, JobHandle deps){
@@ -29,26 +38,6 @@ namespace xshazwar.noize.cpu.mutate {
     }
 
     public delegate JobHandle FlushWriteSliceDelegate(NativeSlice<float> read_, NativeSlice<float> write_, JobHandle deps);
-
-    public struct SwapBuffers<T>: IJob {
-        T a;
-        T b;
-        
-        public static JobHandle Schedule(T a_, T b_, JobHandle deps){
-            var job = new SwapBuffers<T>();     
-            job.a = a_;
-            job.b = b_;
-            return job.Schedule(deps);
-        }
-
-        public void Execute(){
-            T tmp = a;
-            a = b;
-            b = tmp;
-        }
-    }
-
-    public delegate JobHandle SwapBuffersDelegate<T>(T a_, T b_, JobHandle deps);
 
     static class TileHelpers {
         public static FlushWriteSliceDelegate SWAP_RWTILE =  FlushWriteSlice.Schedule;

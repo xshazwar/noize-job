@@ -23,44 +23,43 @@ namespace xshazwar.noize.scripts {
         NativeSlice<float> red;
         NativeSlice<float> green;
         public Renderer mRenderer;
-        public int resolution;
-        public int xpos;
-        public int zpos;
 
-        private GeneratorData input;
+        public GeneratorData input;
 
         private Action<StageIO> onResult;
 
         public bool RunMe;
         private bool complete;
-        public override void BeforeStart()
+        protected override void BeforeStart()
         {
+            if (input.resolution == null){
+                throw new Exception("Set a resolution!");
+            }
             RunMe = false;
             complete = false;
-            texture = new Texture2D(resolution, resolution, TextureFormat.RGBAFloat, false);
+            texture = new Texture2D(input.resolution, input.resolution, TextureFormat.RGBAFloat, false);
             mRenderer.material.mainTexture = texture;
             data =  new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>(8);
             red =  new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>(0);
             green =  new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>(4);
-            input = new GeneratorData(resolution, xpos, zpos, data);
+            input.data = data;
             onResult += SetResult;
         }
-        public override void AfterStart(){}
 
-        public override void BeforeUpdate(){
+        protected override void BeforeUpdate(){
             if (RunMe){
-                input.xpos = xpos;
-                input.zpos = zpos;
-                input.resolution = resolution;
+                Setup();
                 Schedule(input, onResult);
                 RunMe = false;
             } if (complete){
+                UnityEngine.Profiling.Profiler.BeginSample("Flush to image");
+                red.CopyFrom(data);
+                green.CopyFrom(data);
                 texture.Apply();
+                UnityEngine.Profiling.Profiler.EndSample();
                 complete = false;
             }
         }
-        public override void OnPipelineComplete(){}
-        public override void AfterUpdate(){}
 
         public void SetResult(StageIO d){
             GeneratorData dd = (GeneratorData) d;
