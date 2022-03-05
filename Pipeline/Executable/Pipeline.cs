@@ -23,7 +23,7 @@ namespace xshazwar.noize.pipeline {
 
         private List<PipelineStage> stage_instances;
 
-        public Action<StageIO> OnJobComplete {get; set;}
+        public Action<StageIO> OnJobCompleteAction {get; set;}
 
         public void Start(){
             BeforeStart();
@@ -42,15 +42,15 @@ namespace xshazwar.noize.pipeline {
             enabled = true;
             pipelineInput = requirements;
             
-            OnJobComplete += (StageIO res) => { onResult?.Invoke(res);};
+           OnJobCompleteAction += (StageIO res) => { onResult?.Invoke(res);};
             pipelineQueued = true;
         }
 
         public void OnFinalStageComplete(StageIO res){
             pipelineRunning = false;
             pipelineOutput = res;
-            OnJobComplete?.Invoke(pipelineOutput);
-            OnJobComplete = null;
+           OnJobCompleteAction?.Invoke(pipelineOutput);
+           OnJobCompleteAction = null;
             OnPipelineComplete();
         }
 
@@ -62,11 +62,11 @@ namespace xshazwar.noize.pipeline {
             PipelineStage previousStage = null;
             foreach(PipelineStage stage in stage_instances){
                 if(previousStage != null){
-                    previousStage.OnJobComplete += stage.ReceiveInput;
+                    previousStage.OnStageCompleteAction += stage.ReceiveInput;
                 }
                 previousStage = stage;
             }
-            stage_instances[stages.Count - 1].OnJobComplete += OnFinalStageComplete;
+            stage_instances[stages.Count - 1].OnStageCompleteAction += OnFinalStageComplete;
             Debug.Log("Pipeline Setup Complete");
         }
 

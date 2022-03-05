@@ -4,7 +4,7 @@ namespace xshazwar.noize.pipeline {
     
     public interface IPipeline : IScheduleJobCallback, IJobBroadcaster {}
     
-    public interface IStage : IScheduleJob, IJobBroadcaster, IJobTarget {}
+    public interface IStage : IScheduleJob, IStageBroadcaster, IJobTarget {}
 
     public interface IScheduleJob {
         public void Schedule(StageIO requirements);
@@ -23,6 +23,10 @@ namespace xshazwar.noize.pipeline {
     }
 
     public interface IJobBroadcaster{
-        public Action<StageIO> OnJobComplete {get; set;}
+        public Action<StageIO>OnJobCompleteAction {get; set;}
+    }
+
+    public interface IStageBroadcaster{
+        public Action<StageIO>OnStageCompleteAction {get; set;}
     }
 }

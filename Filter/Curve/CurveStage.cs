@@ -52,7 +52,7 @@ namespace xshazwar.noize.cpu.mutate {
 
         public override void OnDestroy()
         {
-            if (curve != null){
+            if (curve.IsCreated){
                 curve.Dispose();
             }
         }

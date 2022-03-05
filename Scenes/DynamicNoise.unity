@@ -510,10 +510,18 @@ MonoBehaviour:
   m_GameObject: {fileID: 1452548764}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8feaba8382a8903baab4e6301ab00339, type: 3}
+  m_Script: {fileID: 11500000, guid: 29a6616b5fd732420908458a2f72f5a1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  dataSource: {fileID: 0}
+  stages:
+  - {fileID: 11400000, guid: 4f257b66e0227ccc39fddd9af120dbbb, type: 2}
+  source: {fileID: 316350596}
+  input:
+    resolution: 512
+    xpos: 0
+    zpos: 0
+    mesh: {fileID: 0}
+  meshFilter: {fileID: 1452548766}
 --- !u!33 &1452548766
 MeshFilter:
   m_ObjectHideFlags: 0

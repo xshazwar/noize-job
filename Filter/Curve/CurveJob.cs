@@ -24,6 +24,9 @@ namespace xshazwar.noize.cpu.mutate {
         [NativeDisableContainerSafetyRestriction]
 		D data;
 
+		[NativeDisableParallelForRestriction]
+        [NativeDisableContainerSafetyRestriction]
+		[ReadOnly]
 		NativeSlice<float> Curve;
 
 		public void Execute (int i) => generator.Execute<D>(i, data, Curve);

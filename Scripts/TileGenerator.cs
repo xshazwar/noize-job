@@ -26,7 +26,7 @@ namespace xshazwar.noize.scripts {
 
         public GeneratorData input;
 
-        private Action<StageIO> onResult;
+        public Action<StageIO> onResult;
 
         public bool RunMe;
         private bool complete;
