@@ -8,9 +8,6 @@ namespace xshazwar.Meshes.Generators {
 	public struct SharedSquareGridPosition : IMeshGenerator {
 
 		public Bounds Bounds => new Bounds(Vector3.zero, new Vector3(1f, 0f, 1f));
-
-		//Need our heightmap (Native Slice)?
-        // For Now we can use a sin generator
         public int VertexCount => (Resolution + 1) * (Resolution + 1);
 
 		public int IndexCount => 6 * Resolution * Resolution;
@@ -23,6 +20,8 @@ namespace xshazwar.Meshes.Generators {
 			int vi = (Resolution + 1) * z, ti = 2 * Resolution * (z - 1);
 
 			var vertex = new Vertex();
+			vertex.normal.z = -1f;
+			vertex.tangent.xw = float2(1f, -1f);
 			vertex.position.x = -0.5f;
 			vertex.position.z = (float)z / Resolution - 0.5f;
 			//fake heights for test
