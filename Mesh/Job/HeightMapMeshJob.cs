@@ -22,10 +22,21 @@ namespace xshazwar.Meshes {
 		public void Execute (int i) => generator.Execute(i, streams, heights);
 
 		public static JobHandle ScheduleParallel (
-			Mesh mesh, Mesh.MeshData meshData, int resolution, NativeSlice<float> heights, JobHandle dependency
+			Mesh mesh,
+			Mesh.MeshData meshData,
+			int resolution,
+			int marginPix,
+			float tileHeight,
+			float tileSize,
+			NativeSlice<float> heights,
+			JobHandle dependency
 		) {
 			var job = new HeightMapMeshJob<G, S>();
 			job.generator.Resolution = resolution;
+			job.generator.TileSize = tileSize;
+			job.generator.Height = tileHeight;
+			job.generator.MarginPix = marginPix;
+			job.generator.NormalStrength = 1f;
             job.heights = heights;
 			job.streams.Setup(
 				meshData,
@@ -40,6 +51,13 @@ namespace xshazwar.Meshes {
 	}
 
 	public delegate JobHandle HeightMapMeshJobScheduleDelegate (
-		Mesh mesh, Mesh.MeshData meshData, int resolution, NativeSlice<float> heights, JobHandle dependency
+		Mesh mesh,
+		Mesh.MeshData meshData,
+		int resolution,
+		int marginPix,
+		float tileHeight,
+		float tileSize,
+		NativeSlice<float> heights,
+		JobHandle dependency
 	);
 }

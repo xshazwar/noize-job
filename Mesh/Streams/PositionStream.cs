@@ -28,7 +28,7 @@ namespace xshazwar.Meshes.Streams {
 			Mesh.MeshData meshData, Bounds bounds, int vertexCount, int indexCount
 		) {
 			var descriptor = new NativeArray<VertexAttributeDescriptor>(
-				1, Allocator.Temp, NativeArrayOptions.UninitializedMemory
+				3, Allocator.Temp, NativeArrayOptions.UninitializedMemory
 			);
 			descriptor[0] = new VertexAttributeDescriptor(dimension: 3);
 			descriptor[1] = new VertexAttributeDescriptor(

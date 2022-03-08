@@ -20,6 +20,10 @@ namespace xshazwar.Meshes {
 
 	public interface IMeshHeightGenerator {
 
+		float TileSize { get; set; }
+		float Height { get; set; }
+		float NormalStrength { get; set; }
+		
 		Bounds Bounds { get; }
 
 		int VertexCount { get; }
@@ -29,6 +33,7 @@ namespace xshazwar.Meshes {
 		int JobLength { get; }
 
 		int Resolution { get; set; }
+		int MarginPix { get; set; }
 
 		void Execute<S> (int i, S streams, NativeSlice<float> height) where S : struct, IMeshStreams;
 	}

@@ -86,7 +86,7 @@ namespace xshazwar.noize.scripts {
 		void GenerateMesh () {
 			meshDataArray = Mesh.AllocateWritableMeshData(1);
 			meshData = meshDataArray[0];
-			jobHandle = jobs[(int)meshType](mesh, meshData, resolution, data, default);
+			jobHandle = jobs[(int)meshType](mesh, meshData, resolution, resolution, resolution, 5, data, default);
 		}
 
 		public void SetHeightValues(int resolution, NativeSlice<float> data){

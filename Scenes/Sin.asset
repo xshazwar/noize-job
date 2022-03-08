@@ -18,4 +18,4 @@ MonoBehaviour:
   octaves: 9
   stepdown: 1.9607
   detuneRate: 0.00005
-  noiseSize: 5091
+  noiseSize: 1778

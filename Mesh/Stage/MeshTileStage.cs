@@ -22,18 +22,19 @@ namespace xshazwar.noize.mesh {
 
     [System.Serializable]
     public class MeshStageData : StageIO {
+
         [Range(8, 4096)]
         public int resolution = 512;
-        public int xpos = 0;
-        public int zpos = 0;
+        // In units of resolution pixels
+        public int marginPix = 5;
+        public float tileSize = 512f;
+        public float tileHeight = 512f;
         public Mesh mesh;
         public NativeSlice<float> data;
 
         public override void ImposeOn(ref StageIO d){
             MeshStageData data = (MeshStageData) d;
             data.resolution = resolution;
-            data.xpos = xpos;
-            data.zpos = zpos;
         }
     }
 
@@ -64,7 +65,7 @@ namespace xshazwar.noize.mesh {
             currentMesh = d.mesh;
             meshDataArray = Mesh.AllocateWritableMeshData(1);
 			meshData = meshDataArray[0];
-			jobHandle = jobs[(int)meshType](currentMesh, meshData, d.resolution, d.data, default);
+			jobHandle = jobs[(int)meshType](currentMesh, meshData, d.resolution, d.marginPix, d.tileHeight, d.tileSize, d.data, default);
         }
         public override void OnStageComplete(){
             Mesh.ApplyAndDisposeWritableMeshData(meshDataArray, currentMesh);
