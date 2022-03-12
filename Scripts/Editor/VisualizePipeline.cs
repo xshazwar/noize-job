@@ -13,6 +13,7 @@ using xshazwar.noize.scripts;
 
 namespace xshazwar.noize.scripts.editor {
 
+    [Serializable]
     public enum CHANNEL
     {
         R = 0,
@@ -30,7 +31,6 @@ namespace xshazwar.noize.scripts.editor {
         public int zpos = 0;
 
         private bool isRunning = false;
-
         private bool useInputTexture = false;
         private CHANNEL inputChannel = 0;
 
@@ -76,6 +76,25 @@ namespace xshazwar.noize.scripts.editor {
                 CS.CopyFrom(cd);
             }
             texture.Apply();
+        }
+
+        void ImportTexture(){
+                CreateTexture();
+                RenderTexture renderTex = RenderTexture.GetTemporary(
+                    inputTexture.width,
+                    inputTexture.height,
+                    0,
+                    RenderTextureFormat.Default,
+                    RenderTextureReadWrite.Linear);
+                Graphics.Blit(inputTexture, renderTex);
+                RenderTexture previous = RenderTexture.active;
+                RenderTexture.active = renderTex;
+                texture.ReadPixels(new Rect(0, 0, renderTex.width, renderTex.height), 0, 0);
+                texture.Apply();
+                RenderTexture.active = previous;
+                RenderTexture.ReleaseTemporary(renderTex);
+                NativeSlice<float> channelData = new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>((int) inputChannel);
+                ApplyTexture(channelData);
         }
 
         void OnPipelineComplete(StageIO res){
@@ -125,7 +144,16 @@ namespace xshazwar.noize.scripts.editor {
             useInputTexture = EditorGUILayout.Toggle("Pipe takes input texture", useInputTexture);
             if(useInputTexture){
                 offset += 20;
-                inputChannel = (CHANNEL)EditorGUILayout.EnumFlagsField(inputChannel);
+                EditorGUI.BeginChangeCheck();
+                inputChannel = (CHANNEL)EditorGUILayout.EnumPopup("Input Channel", inputChannel);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    if (inputTexture != null){
+                        ImportTexture();
+                    }
+                }
+
+
             }
             EditorGUI.BeginChangeCheck();
                 mPipeline = (GeneratorPipeline)EditorGUI.ObjectField(new Rect(3, 100 + offset, 400, 20),
@@ -155,22 +183,7 @@ namespace xshazwar.noize.scripts.editor {
                 }
             if (EditorGUI.EndChangeCheck()){
                 resolution = inputTexture.width;
-                CreateTexture();
-                RenderTexture renderTex = RenderTexture.GetTemporary(
-                    inputTexture.width,
-                    inputTexture.height,
-                    0,
-                    RenderTextureFormat.Default,
-                    RenderTextureReadWrite.Linear);
-                Graphics.Blit(inputTexture, renderTex);
-                RenderTexture previous = RenderTexture.active;
-                RenderTexture.active = renderTex;
-                texture.ReadPixels(new Rect(0, 0, renderTex.width, renderTex.height), 0, 0);
-                texture.Apply();
-                RenderTexture.active = previous;
-                RenderTexture.ReleaseTemporary(renderTex);
-                NativeSlice<float> channelData = new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>((int) inputChannel);
-                ApplyTexture(channelData);
+                ImportTexture();
             }
             if (useInputTexture && inputTexture){
                 EditorGUI.DrawPreviewTexture(new Rect(240, 3 + offset, 256, 256), inputTexture);
@@ -184,13 +197,18 @@ namespace xshazwar.noize.scripts.editor {
             }
 
             if (GUI.Button(new Rect(10, 140 + offset, 100, 30), "Run Pipeline")){
-                Debug.Log("Clicked the button with text");
                 if (isRunning == false && mPipeline != null){
                     mPipeline.OnDestroy();
                     mPipeline.Start();
                     RunPipeline();
                 }
-
+            }
+            if( inputTexture != null){
+                if (GUI.Button(new Rect(10, 100 + offset, 100, 30), "Reset Source")){
+                    if (isRunning == false && mPipeline != null){
+                        ImportTexture();
+                    }
+                }
             }
         }
     }
