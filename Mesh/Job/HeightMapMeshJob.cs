@@ -3,7 +3,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
 
-namespace xshazwar.Meshes {
+namespace xshazwar.noize.mesh {
 
 	[BurstCompile(FloatPrecision.Standard, FloatMode.Fast, CompileSynchronously = true)]
 	public struct HeightMapMeshJob<G, S> : IJobFor

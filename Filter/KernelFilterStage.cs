@@ -7,8 +7,7 @@ using Unity.Jobs;
 
 using xshazwar.noize.pipeline;
 
-
-namespace xshazwar.noize.cpu.mutate {
+namespace xshazwar.noize.filter {
 
     [CreateAssetMenu(fileName = "KernelFilter", menuName = "Noize/Filter/KernelFilter", order = 2)]
     public class KernelFilterStage: PipelineStage {

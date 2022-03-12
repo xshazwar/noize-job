@@ -7,7 +7,7 @@ using Unity.Jobs;
 
 using xshazwar.noize.pipeline;
 
-namespace xshazwar.noize.cpu.mutate {
+namespace xshazwar.noize.filter {
 
     [CreateAssetMenu(fileName = "CurveStage", menuName = "Noize/Filter/CurveFilter", order = 2)]
     public class CurveStage: PipelineStage {
@@ -31,7 +31,7 @@ namespace xshazwar.noize.cpu.mutate {
         private void ExtractCurve(){
             try{
                 curve.Dispose();
-            }catch(Exception err){}
+            }catch(Exception){}
             curve = new NativeArray<float>(samples, Allocator.Persistent);
             for (int i = 0; i < samples; i++){
                 curve[i] = unityCurve.Evaluate( (float) i / samples );

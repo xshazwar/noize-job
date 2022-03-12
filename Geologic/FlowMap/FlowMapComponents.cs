@@ -7,7 +7,10 @@ using UnityEngine;
 
 using static Unity.Mathematics.math;
 
-namespace xshazwar.noize.cpu.mutate {
+using xshazwar.noize.pipeline;
+using xshazwar.noize.filter;
+
+namespace xshazwar.noize.geologic {
     using Unity.Mathematics;
 
     public struct ComputeFlowStep: IComputeFlowData {
@@ -151,7 +154,7 @@ namespace xshazwar.noize.cpu.mutate {
         public float MIN {get; set;}
         public float NORMTO {get; set;}
 
-        public void CalculateCell<RW>(int x, int z, RW map, NativeArray<float> args) 
+        public void CalculateCell<RW>(int x, int z, RW map, NativeSlice<float> args) 
             where  RW : struct, IRWTile
         {
                 float v = map.GetData(x, z);
@@ -161,50 +164,11 @@ namespace xshazwar.noize.cpu.mutate {
                 map.SetValue(x, z, (v - args[0]) / args[2]);
         }
 
-        public void Execute<RW>(int z, RW map, NativeArray<float> args) 
+        public void Execute<RW>(int z, RW map, NativeSlice<float> args) 
             where  RW : struct, IRWTile{
             for( int x = 0; x < Resolution; x++){
                 CalculateCell<RW>(x, z, map, args);
             }
-        }
-    }
-
-    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
-    public struct GetMapRangeJob: IJob {
-
-        public const int MIN = 0;
-        public const int MAX = 1;
-        public const int RANGE = 2;
-        [ReadOnly]
-        NativeSlice<float> map;
-        [WriteOnly]
-        NativeArray<float> res;
-
-        float HIGHEST_MIN;
-        float LOWEST_MAX;
-
-        public void Execute(){
-            // float min_ = float.PositiveInfinity;
-            float min_ = HIGHEST_MIN;
-            float max_ = LOWEST_MAX;
-            for (int i = 0; i < map.Length; i++){
-                min_ = min(min_, map[i]);
-                max_ = max(max_, map[i]);
-            }
-            res[MIN] = min_;
-            res[MAX] = max_;
-            res[RANGE] = max_ - min_;
-        }
-
-        public JobHandle Schedule(NativeSlice<float> map_, NativeArray<float> res_, JobHandle dep, float lim_min = float.PositiveInfinity, float lim_max = float.NegativeInfinity)
-        {
-            var job = new GetMapRangeJob();
-            job.map = map_;
-            job.res = res_;
-            job.HIGHEST_MIN = lim_min;
-            job.LOWEST_MAX = lim_max;
-            return job.Schedule(dep);
-
         }
     }
 

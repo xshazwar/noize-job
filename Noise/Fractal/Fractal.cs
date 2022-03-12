@@ -10,7 +10,10 @@ using UnityEngine;
 
 using static Unity.Mathematics.math;
 
-namespace xshazwar.noize.cpu.mutate {
+using xshazwar.noize.pipeline;
+using xshazwar.noize.filter;
+
+namespace xshazwar.noize.generate {
     using Unity.Mathematics;
 
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]

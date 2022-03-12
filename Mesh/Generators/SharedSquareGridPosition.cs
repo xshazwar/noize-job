@@ -3,7 +3,7 @@ using UnityEngine;
 
 using static Unity.Mathematics.math;
 
-namespace xshazwar.Meshes.Generators {
+namespace xshazwar.noize.mesh.Generators {
 
 	public struct SharedSquareGridPosition : IMeshGenerator {
 

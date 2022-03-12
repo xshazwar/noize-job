@@ -1,7 +1,7 @@
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace xshazwar.Meshes {
+namespace xshazwar.noize.mesh {
 
 	public interface IMeshStreams {
 

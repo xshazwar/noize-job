@@ -12,10 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d202fcfe316a9411ba250bf60c314ad5, type: 3}
   m_Name: Sin
   m_EditorClassIdentifier: 
-  noiseType: 3
+  noiseType: 0
   hurst: 1
   startingAmplitude: 1
-  octaves: 9
+  octaves: 1
   stepdown: 1.9607
   detuneRate: 0.00005
-  noiseSize: 1778
+  noiseSize: 515

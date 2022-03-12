@@ -4,7 +4,9 @@ using UnityEngine;
 
 using static Unity.Mathematics.math;
 
-namespace xshazwar.noize.cpu.mutate {
+using xshazwar.noize.pipeline;
+
+namespace xshazwar.noize.filter {
     using Unity.Mathematics;
 
     public interface ICommonTileSettings {
@@ -83,7 +85,7 @@ namespace xshazwar.noize.cpu.mutate {
 
     public interface INormalizeMap: ICommonTileSettings {
 
-        void Execute<RW>(int z, RW map, NativeArray<float> args) 
+        void Execute<RW>(int z, RW map, NativeSlice<float> args) 
             where  RW : struct, IRWTile;
     }
 

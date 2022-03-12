@@ -10,18 +10,21 @@ using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Jobs;
 
+using xshazwar.noize;
+using xshazwar.noize.generate;
 using xshazwar.noize.pipeline;
-using xshazwar.noize.cpu.mutate;
 using xshazwar.noize.scripts;
 
 namespace xshazwar.noize.scripts {
     
     [RequireComponent(typeof(Texture2D))]
-    public class TileGenerator : BasePipeline{
+    public class TileGenerator : MonoBehaviour {
         Texture2D texture;
         NativeSlice<float> data;
         NativeSlice<float> red;
         NativeSlice<float> green;
+
+        public GeneratorPipeline pipeline;
         public Renderer mRenderer;
 
         public GeneratorData input;
@@ -30,11 +33,8 @@ namespace xshazwar.noize.scripts {
 
         public bool RunMe;
         private bool complete;
-        protected override void BeforeStart()
+        void Start()
         {
-            if (input.resolution == null){
-                throw new Exception("Set a resolution!");
-            }
             RunMe = false;
             complete = false;
             texture = new Texture2D(input.resolution, input.resolution, TextureFormat.RGBAFloat, false);
@@ -46,25 +46,19 @@ namespace xshazwar.noize.scripts {
             onResult += SetResult;
         }
 
-        protected override void BeforeUpdate(){
+        void Update(){
             if (RunMe){
-                Setup();
-                Schedule(input, onResult);
+                pipeline.Enqueue(input, onResult);
                 RunMe = false;
-            } if (complete){
-                UnityEngine.Profiling.Profiler.BeginSample("Flush to image");
-                red.CopyFrom(data);
-                green.CopyFrom(data);
-                texture.Apply();
-                UnityEngine.Profiling.Profiler.EndSample();
-                complete = false;
             }
         }
 
         public void SetResult(StageIO d){
-            GeneratorData dd = (GeneratorData) d;
-            complete = true;
-            Debug.Log("Result Set!");
+            red.CopyFrom(data);
+            green.CopyFrom(data);
+            texture.Apply();
+            UnityEngine.Profiling.Profiler.EndSample();
+            complete = false;
         }
     }
 }

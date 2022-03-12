@@ -24,11 +24,13 @@ namespace xshazwar.noize.pipeline {
         StageIO pipelineInput;
         StageIO pipelineOutput;
 
+        public string alias = "Unnamed Pipeline";
+
         ConcurrentQueue<PipelineWorkItem> queue;
         
         // This is a list of stages, but references the type and must be instantiated
         [SerializeField]
-        private List<PipelineStage> stages;
+        public List<PipelineStage> stages;
 
         private List<PipelineStage> stage_instances;
 
@@ -43,6 +45,10 @@ namespace xshazwar.noize.pipeline {
             // enabled = false;
             Setup();
             AfterStart();
+        }
+
+        void OnValidate(){
+            this.name = $"Pipeline:{alias}";
         }
 
         public void Enqueue(StageIO input, Action<StageIO> action){
@@ -126,7 +132,7 @@ namespace xshazwar.noize.pipeline {
             }
         }
 
-        void OnDestroy()
+        public void OnDestroy()
         {
             CleanUpStages();
         }

@@ -7,24 +7,8 @@ using Unity.Jobs;
 
 using xshazwar.noize.pipeline;
 
-
-namespace xshazwar.noize.cpu.mutate {
+namespace xshazwar.noize.generate {
     
-    [System.Serializable]
-    public class GeneratorData : StageIO {
-        public string uuid;
-        [Range(8, 4096)]
-        public int resolution = 512;
-        public int xpos = 0;
-        public int zpos = 0;
-        public NativeSlice<float> data;
-        public override void ImposeOn(ref StageIO d){
-            GeneratorData data = (GeneratorData) d;
-            data.resolution = resolution;
-            data.xpos = xpos;
-            data.zpos = zpos;
-        }
-    }
     [CreateAssetMenu(fileName = "NoiseGenerator", menuName = "Noize/Generators/NoiseSource", order = 1)]
     public class NoiseStage: PipelineStage {
         
@@ -36,8 +20,6 @@ namespace xshazwar.noize.cpu.mutate {
             RotatedSimplex,
             Cellular
         }
-
-        static MapNormalizeValuesDelegate normStage = MapNormalizeValues<NormalizeMap, RWTileData>.ScheduleParallel;
 
         static FractalJobDelegate[] jobs = {
             FractalJob<FractalGenerator<SinGetter>, WriteTileData>.ScheduleParallel,

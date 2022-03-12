@@ -6,7 +6,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace xshazwar.Meshes.Streams {
+namespace xshazwar.noize.mesh.Streams {
 
     public struct PositionStream16 : IMeshStreams {
 		// This is only valid for square mesh up to resolution 256*256

@@ -1,6 +1,6 @@
 using Unity.Mathematics;
 
-namespace xshazwar.Meshes {
+namespace xshazwar.noize.mesh {
 
 	public struct Vertex {
         // this could just be a float, but I don't think it matters much and I like the 

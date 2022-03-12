@@ -12,7 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d202fcfe316a9411ba250bf60c314ad5, type: 3}
   m_Name: Perl
   m_EditorClassIdentifier: 
-  noiseType: 3
-  hurst: 0.147
-  octaves: 23
-  noiseSize: 4318
+  noiseType: 1
+  hurst: 0.856
+  startingAmplitude: 1
+  octaves: 11
+  stepdown: 1.9439
+  detuneRate: 0.0317
+  noiseSize: 1540

@@ -10,46 +10,28 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e0314bd2ab9f158929dbdb017193745b, type: 3}
-  m_Name: Invert
+  m_Name: Flat0
   m_EditorClassIdentifier: 
   unityCurve:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
-      time: 0
+      time: -0.025001526
+      value: 0.0041770935
+      inSlope: -0.0040100194
+      outSlope: -0.0040100194
+      tangentMode: 34
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1.0166626
       value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 0.17911619
-      value: 0.99240434
-      inSlope: 0.5499021
-      outSlope: 0.5499021
-      tangentMode: 0
+      inSlope: -0.0040100194
+      outSlope: -0.0040100194
+      tangentMode: 34
       weightedMode: 0
       inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 0.66358703
-      value: 0.045975834
-      inSlope: 1.9261507
-      outSlope: 1.9261507
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 2
-      outSlope: 2
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
       outWeight: 0
     m_PreInfinity: 2
     m_PostInfinity: 2

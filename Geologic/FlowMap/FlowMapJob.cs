@@ -7,7 +7,10 @@ using UnityEngine;
 
 using static Unity.Mathematics.math;
 
-namespace xshazwar.noize.cpu.mutate {
+using xshazwar.noize.pipeline;
+using xshazwar.noize.filter;
+
+namespace xshazwar.noize.geologic {
     using Unity.Mathematics;
 
 	[BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
@@ -223,50 +226,4 @@ namespace xshazwar.noize.cpu.mutate {
         int resolution,
         JobHandle dependency
     );
-
-    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
-    public struct MapNormalizeValues<F, RW> : IJobFor
-        where F : struct, INormalizeMap
-        where RW: struct, IRWTile
-    {
-        F fn;
-        
-        [NativeDisableParallelForRestriction]
-        [NativeDisableContainerSafetyRestriction]
-        RW data ;
-        [ReadOnly]
-        NativeArray<float> args;
-
-        public void Execute (int i) => fn.Execute<RW>(i, data, args);
-        public static JobHandle ScheduleParallel (
-            // compute outflow this is RO
-			NativeSlice<float> src,
-            int resolution,
-            JobHandle dependency
-		)
-        {
-            NativeArray<float> args_ = new NativeArray<float>(3, Allocator.TempJob);
-            NativeArray<float> buff = new NativeArray<float>(resolution * resolution, Allocator.TempJob);
-            NativeSlice<float> buffer = new NativeSlice<float>(buff);
-            var rng = new GetMapRangeJob();
-            JobHandle prev = rng.Schedule(src, args_, dependency, 0f);
-            var job = new MapNormalizeValues<F, RW>();
-            job.fn.Resolution = resolution;
-            job.fn.JobLength = resolution;
-            job.args = args_;
-            job.data.Setup(src, buffer, resolution);
-            JobHandle res = job.ScheduleParallel(
-                job.fn.JobLength, 8, prev
-			);
-            JobHandle handle = TileHelpers.SWAP_RWTILE(src, buffer, res);
-            return args_.Dispose(buff.Dispose(handle));
-        }
-
-    }
-
-    public delegate JobHandle MapNormalizeValuesDelegate(
-            NativeSlice<float> src,
-            int resolution,
-            JobHandle dependency);
-		
 }

@@ -8,7 +8,7 @@ using UnityEngine;
 
 using static Unity.Mathematics.math;
 
-namespace xshazwar.Meshes.Generators {
+namespace xshazwar.noize.mesh.Generators {
     public struct SquareGridHeightMap : IMeshHeightGenerator {
 
 		public float NormalStrength {get; set;}
@@ -19,8 +19,6 @@ namespace xshazwar.Meshes.Generators {
 			new Vector3(0.5f * TileSize, 0f, 0.5f * TileSize),
 			new Vector3(TileSize, Height, TileSize));
 
-		//Need our heightmap (Native Slice)?
-        // For Now we can use a sin generator
         public int VertexCount => (Resolution + 1) * (Resolution + 1);
 
 		public int IndexCount => 6 * Resolution * Resolution;

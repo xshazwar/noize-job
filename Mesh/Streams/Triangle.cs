@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using Unity.Mathematics;
 
-namespace xshazwar.Meshes.Streams {
+namespace xshazwar.noize.mesh.Streams {
 
 	[StructLayout(LayoutKind.Sequential)]
 	public struct TriangleUInt16 {
