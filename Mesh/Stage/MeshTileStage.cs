@@ -22,20 +22,21 @@ namespace xshazwar.noize.mesh {
 
     public enum MeshType {
         SquareGridHeightMap,
-        SharedSquareGridPosition
+        OvershootSquareGridHeightMap
     };
 
     [CreateAssetMenu(fileName = "MeshTileStage", menuName = "Noize/Output/MeshTile", order = 2)]
     public class MeshTileStage: PipelineStage {
         // TODO swap between jobs depending on mesh resolution to save memory
 		static HeightMapMeshJobScheduleDelegate[] jobs = {
-			HeightMapMeshJob<SquareGridHeightMap, PositionStream32>.ScheduleParallel
+			HeightMapMeshJob<SquareGridHeightMap, PositionStream32>.ScheduleParallel,
+            HeightMapMeshJob<OvershootSquareGridHeightMap, PositionStream32>.ScheduleParallel
 		};
 
         private Mesh currentMesh;
         private Mesh.MeshDataArray meshDataArray;
 		private Mesh.MeshData meshData;
-        MeshType meshType = MeshType.SquareGridHeightMap;
+        public MeshType meshType = MeshType.SquareGridHeightMap;
 
         void OnValidate(){}
 
@@ -47,7 +48,7 @@ namespace xshazwar.noize.mesh {
             currentMesh = d.mesh;
             meshDataArray = Mesh.AllocateWritableMeshData(1);
 			meshData = meshDataArray[0];
-			jobHandle = jobs[(int)meshType](currentMesh, meshData, d.resolution, d.marginPix, d.tileHeight, d.tileSize, d.data, default);
+			jobHandle = jobs[(int)meshType](currentMesh, meshData, d.resolution, d.inputResolution, d.marginPix, d.tileHeight, d.tileSize, d.data, default);
         }
         public override void OnStageComplete(){
             Mesh.ApplyAndDisposeWritableMeshData(meshDataArray, currentMesh);

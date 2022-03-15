@@ -41,7 +41,9 @@ namespace xshazwar.noize.scripts.editor {
         [MenuItem("Noize/Visualize Pipeline")]
         static void ShowWindow() {
             VisualizePipelineWindow window = CreateInstance<VisualizePipelineWindow>();
-            window.title = "VisualizePipelineWindow";
+            GUIContent title = new GUIContent("VisualizePipelineWindow");
+
+            window.titleContent = title;
             window.position = new Rect(0, 0, 800, 700);
             window.Show();
         }
@@ -50,18 +52,15 @@ namespace xshazwar.noize.scripts.editor {
             if (! isRunning){
                 return;
             }
-            Debug.Log("tick");
             mPipeline.Update();
         }
 
         void OnEnable(){
-            Debug.Log("Window Active");
             EditorApplication.update += OnUpdate;
             pipelineComplete += OnPipelineComplete;
         }
 
         void OnDisable(){
-            Debug.Log("Window InActive");
             EditorApplication.update -= OnUpdate;
             pipelineComplete -= OnPipelineComplete;
             if(mPipeline != null){
@@ -100,14 +99,10 @@ namespace xshazwar.noize.scripts.editor {
         void OnPipelineComplete(StageIO res){
             GeneratorData d = (GeneratorData) res;
             isRunning = false;
-            Debug.Log("Pipeline complete");
             ApplyTexture(d.data);
-            Debug.Log("Texture Updated");
-
         }
 
         void CreateTexture(){
-            Debug.Log("new texture target created");
             texture = new Texture2D(resolution, resolution, TextureFormat.RGBAFloat, false);
         }
 
@@ -126,7 +121,6 @@ namespace xshazwar.noize.scripts.editor {
                 },
                 pipelineComplete
             );
-            Debug.Log("Pipeline Queued");
         }
 
         void OnGUI()
@@ -164,13 +158,9 @@ namespace xshazwar.noize.scripts.editor {
             if (EditorGUI.EndChangeCheck())
             {
                 if (mPipeline != null && mPipeline.stages.Count > 0){
-                    foreach( PipelineStage s in mPipeline.stages){
-                        Debug.Log(s);
-                    }
                     mPipeline.Start();
-                    Debug.Log("pipeline instantiated");
                 }else{
-                    Debug.Log("No stages :-(");
+                    Debug.LogError("No stages in pipeline");
                 }
             }
             EditorGUI.BeginChangeCheck();

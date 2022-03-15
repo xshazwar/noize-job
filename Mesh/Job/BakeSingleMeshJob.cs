@@ -2,7 +2,7 @@ using Unity.Jobs;
 using UnityEngine;
 
 namespace xshazwar.noize.mesh {
-    public struct BakeJob : IJob
+    public struct BakeSingleJob : IJob
     {
         public int meshId;
 
@@ -12,12 +12,12 @@ namespace xshazwar.noize.mesh {
         }
 
         public static JobHandle Schedule(int meshId, JobHandle deps){
-            var job = new BakeJob();     
+            var job = new BakeSingleJob();     
             job.meshId = meshId;
             return job.Schedule(deps);
         }
     }
 
-    public delegate JobHandle BakeJobDelegate(int meshId, JobHandle deps);
+    public delegate JobHandle BakeSingleJobDelegate(int meshId, JobHandle deps);
 
 }

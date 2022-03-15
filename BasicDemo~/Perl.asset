@@ -9,6 +9,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4acb1521862fc707dba3fec1a1b3f0e7, type: 3}
-  m_Name: MeshTileStage
+  m_Script: {fileID: 11500000, guid: d202fcfe316a9411ba250bf60c314ad5, type: 3}
+  m_Name: Perl
   m_EditorClassIdentifier: 
+  noiseType: 1
+  hurst: 0.5938
+  startingAmplitude: 1
+  octaves: 6
+  stepdown: 1.9168
+  detuneRate: 0.0317
+  noiseSize: 658

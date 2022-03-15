@@ -9,7 +9,7 @@ using UnityEngine;
 using static Unity.Mathematics.math;
 
 namespace xshazwar.noize.mesh.Generators {
-    public struct SquareGridHeightMap : IMeshHeightGenerator {
+    public struct OvershootSquareGridHeightMap : IMeshHeightGenerator {
 
 		public float NormalStrength {get; set;}
 		public float Height {get; set;}
@@ -33,11 +33,6 @@ namespace xshazwar.noize.mesh.Generators {
 		private int PixOffset => (int) ((InputResolution - Resolution) / 2) ;
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		private float InterpolateEdge(float a, float b){
-			return a - (b - a);
-		}
-
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private float MarginScale(int x, int z){
 			float h = 0f;
 			if (x < MarginPix){
@@ -57,20 +52,20 @@ namespace xshazwar.noize.mesh.Generators {
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int getIdx(int x, int z){
-            // overflows safely
-            x = clamp(x, 0, Resolution + 1);
-            z = clamp(z, 0, Resolution + 1);
+            // assumes overflow in safe zone
+            x = clamp(x, 0 - PixOffset, Resolution + PixOffset);
+            z = clamp(z, 0 - PixOffset, Resolution + PixOffset);
             return ((z + PixOffset) * InputResolution) + x + PixOffset;   
         }
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private void SetVertexValues(ref Vertex v, int x, int z, NativeSlice<float> heights){
 			float t = heights[getIdx(x, z)];
-			v.position.y = (t * Height); // - MarginScale(x, z);
-			float l = x > 0 ? heights[getIdx(x - 1, z)] : InterpolateEdge(t, heights[getIdx(x + 1, z)]);
-			float r = x < Resolution - 1 ? heights[getIdx(x + 1, z)] : InterpolateEdge(t, heights[getIdx(x - 1, z)]);
-			float u = z > 0 ? heights[getIdx(x, z - 1)] : InterpolateEdge(heights[getIdx(x, z + 1)], t);
-			float d = z < Resolution - 1 ? heights[getIdx(x, z + 1)] : InterpolateEdge(heights[getIdx(x, z - 1)], t);
+			v.position.y = (t * Height) - MarginScale(x, z);
+			float l = heights[getIdx(x - 1, z)];
+			float r = heights[getIdx(x + 1, z)];
+			float u = heights[getIdx(x, z - 1)];
+			float d = heights[getIdx(x, z + 1)];
 			float3 t1 = float3(4.0f, (r - l) /(2f), 0f);
 			float3 t2 = float3(0, (u - d) /(2f), 4.0f);
 			v.tangent.xyz = cross(t2, t1);

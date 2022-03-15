@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using System.Linq;
 
-using xshazwar.unity;
+using xshazwar.noize;
 
 // taken from this excellent example
 // https://www.patrykgalach.com/2020/01/27/assigning-interface-in-unity-inspector/
@@ -10,7 +10,7 @@ using xshazwar.unity;
 /// <summary>
 /// Drawer for the RequireInterface attribute.
 /// </summary>
-namespace xshazwar.unity.editor {
+namespace xshazwar.noize.editor {
     [CustomPropertyDrawer(typeof(RequireInterfaceAttribute))]
     public class RequireInterfaceDrawer : PropertyDrawer
     {

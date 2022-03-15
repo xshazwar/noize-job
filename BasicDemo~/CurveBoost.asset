@@ -10,29 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e0314bd2ab9f158929dbdb017193745b, type: 3}
-  m_Name: Flat0
+  m_Name: CurveBoost
   m_EditorClassIdentifier: 
   unityCurve:
     serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: -0.025001526
-      value: 0.0041770935
-      inSlope: -0.0040100194
-      outSlope: -0.0040100194
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0.33333334
-    - serializedVersion: 3
-      time: 1.0166626
-      value: 0
-      inSlope: -0.0040100194
-      outSlope: -0.0040100194
-      tangentMode: 34
-      weightedMode: 0
-      inWeight: 0.33333334
-      outWeight: 0
+    m_Curve: []
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4

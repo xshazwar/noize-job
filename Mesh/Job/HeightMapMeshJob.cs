@@ -25,6 +25,7 @@ namespace xshazwar.noize.mesh {
 			Mesh mesh,
 			Mesh.MeshData meshData,
 			int resolution,
+			int inputResolution,
 			int marginPix,
 			float tileHeight,
 			float tileSize,
@@ -33,6 +34,7 @@ namespace xshazwar.noize.mesh {
 		) {
 			var job = new HeightMapMeshJob<G, S>();
 			job.generator.Resolution = resolution;
+			job.generator.InputResolution = inputResolution;
 			job.generator.TileSize = tileSize;
 			job.generator.Height = tileHeight;
 			job.generator.MarginPix = marginPix;
@@ -54,6 +56,7 @@ namespace xshazwar.noize.mesh {
 		Mesh mesh,
 		Mesh.MeshData meshData,
 		int resolution,
+		int inputResolution,
 		int marginPix,
 		float tileHeight,
 		float tileSize,

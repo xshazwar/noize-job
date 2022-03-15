@@ -72,8 +72,14 @@ namespace xshazwar.noize.filter {
     }
 
     public enum KernelFilterType {
-        Gauss5,
-        Gauss3,
+        Gauss9_S1,
+        Gauss7_S1,
+        Gauss5_S1,
+        Gauss3_S1,
+        Gauss9_S2,
+        Gauss7_S2,
+        Gauss5_S2,
+        Gauss3_S2,
         Smooth3,
         Sobel3Horizontal,
         Sobel3Vertical,
@@ -83,10 +89,16 @@ namespace xshazwar.noize.filter {
     }
 
     public struct SeparableKernelFilter {
-        public static float gauss5Factor = 1f/16f;
-        public static float[] gauss5 = {1f,4f,6f,4f,1f};
-        public static float gauss3Factor = 1f/4f;
-        public static float[] gauss3 = {1f, 2f, 1f};
+        public static float[] gauss9_s1 = { 0.00013383062461474178f, 0.0044318616200312655f, 0.053991127420704416f, 0.24197144565660075f, 0.3989434693560978f, 0.24197144565660075f, 0.053991127420704416f, 0.0044318616200312655f, 0.00013383062461474178f };
+        public static float[] gauss7_s1 = { 0.004433048175243746f, 0.054005582622414484f, 0.2420362293761143f, 0.3990502796524549f, 0.2420362293761143f, 0.054005582622414484f, 0.004433048175243746f };
+        public static float[] gauss5_s1 = { 0.054488684549642945f, 0.24420134200323337f, 0.4026199468942475f, 0.24420134200323337f, 0.054488684549642945f };
+        public static float[] gauss3_s1 = { 0.274068619061197f, 0.45186276187760605f, 0.274068619061197f };
+
+        public static float[] gauss9_s2 = { 0.027630550638898833f, 0.06628224528636122f, 0.12383153680577531f, 0.1801738229113809f, 0.20416368871516757f, 0.1801738229113809f, 0.12383153680577531f, 0.06628224528636122f, 0.027630550638898833f };
+        public static float[] gauss7_s2 = { 0.07015932695902606f, 0.131074878967366f, 0.19071282356963737f, 0.21610594100794114f, 0.19071282356963737f, 0.131074878967366f, 0.07015932695902606f };
+        public static float[] gauss5_s2 = { 0.15246914402033734f, 0.22184129554377693f, 0.25137912087177144f, 0.22184129554377693f, 0.15246914402033734f };
+        public static float[] gauss3_s2 = { 0.3191677684538592f, 0.36166446309228156f, 0.3191677684538592f };
+
         public static float smooth3Factor =  1f / 3f ;
         public static float[] smooth3 = {1f, 1f, 1f};
 
@@ -221,17 +233,52 @@ namespace xshazwar.noize.filter {
                     // return ScheduleSobel2D(src, tmp, resolution, dependency);
                 case KernelFilterType.Smooth3:
                     break;
-                case KernelFilterType.Gauss5:
-                    kernelBodyX = gauss5;
-                    kernelBodyZ = gauss5;
-                    kernelFactor = gauss5Factor;
+                case KernelFilterType.Gauss9_S1:
+                    kernelBodyX = gauss9_s1;
+                    kernelBodyZ = gauss9_s1;
+                    kernelFactor = 1f;
+                    kernelSize = 9;
+                    break;
+                case KernelFilterType.Gauss7_S1:
+                    kernelBodyX = gauss7_s1;
+                    kernelBodyZ = gauss7_s1;
+                    kernelFactor = 1f;
+                    kernelSize = 7;
+                    break;
+                case KernelFilterType.Gauss5_S1:
+                    kernelBodyX = gauss5_s1;
+                    kernelBodyZ = gauss5_s1;
+                    kernelFactor = 1f;
                     kernelSize = 5;
                     break;
-                case KernelFilterType.Gauss3:
-                    kernelBodyX = gauss3;
-                    kernelBodyZ = gauss3;
-                    kernelFactor = gauss3Factor;
-                    break;;
+                case KernelFilterType.Gauss3_S1:
+                    kernelBodyX = gauss3_s1;
+                    kernelBodyZ = gauss3_s1;
+                    kernelFactor = 1f;
+                    break;
+                case KernelFilterType.Gauss9_S2:
+                    kernelBodyX = gauss9_s2;
+                    kernelBodyZ = gauss9_s2;
+                    kernelFactor = 1f;
+                    kernelSize = 9;
+                    break;
+                case KernelFilterType.Gauss7_S2:
+                    kernelBodyX = gauss7_s2;
+                    kernelBodyZ = gauss7_s2;
+                    kernelFactor = 1f;
+                    kernelSize = 7;
+                    break;
+                case KernelFilterType.Gauss5_S2:
+                    kernelBodyX = gauss5_s2;
+                    kernelBodyZ = gauss5_s2;
+                    kernelFactor = 1f;
+                    kernelSize = 5;
+                    break;
+                case KernelFilterType.Gauss3_S2:
+                    kernelBodyX = gauss3_s2;
+                    kernelBodyZ = gauss3_s2;
+                    kernelFactor = 1f;
+                    break;
                 case KernelFilterType.Sobel3Horizontal:
                     kernelBodyX = sobel3_HX;
                     kernelBodyZ = sobel3_HZ;

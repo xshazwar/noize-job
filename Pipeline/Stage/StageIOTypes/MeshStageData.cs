@@ -9,7 +9,10 @@ namespace xshazwar.noize.pipeline {
     public class MeshStageData : StageIO {
 
         [Range(8, 4096)]
+        // square output of the mesh (cut from the middle of the source data)
         public int resolution = 512;
+        // square resolution of the source data
+        public int inputResolution = 512;
         // In units of resolution pixels
         public int marginPix = 5;
         public float tileSize = 512f;

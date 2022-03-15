@@ -10,7 +10,7 @@ namespace xshazwar.noize.mesh {
 
     [CreateAssetMenu(fileName = "MeshBakeStage", menuName = "Noize/Mesh/BakeMeshStage", order = 2)]
     public class MeshBakeStage: PipelineStage {
-		static BakeJobDelegate job = BakeJob.Schedule;
+		static BakeSingleJobDelegate job = BakeSingleJob.Schedule;
         public override void Schedule( StageIO req ){
             MeshStageData d = (MeshStageData) req;
 

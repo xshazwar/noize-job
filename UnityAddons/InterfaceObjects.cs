@@ -6,7 +6,7 @@ using UnityEngine;
 // taken from this excellent example
 // https://www.patrykgalach.com/2020/01/27/assigning-interface-in-unity-inspector/
 
-namespace xshazwar.unity {
+namespace xshazwar.noize {
 public class RequireInterfaceAttribute : PropertyAttribute
     {
         // Interface type.

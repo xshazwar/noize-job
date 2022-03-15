@@ -32,6 +32,7 @@ namespace xshazwar.noize.mesh {
 
 		int JobLength { get; }
 
+		int InputResolution {get; set;}
 		int Resolution { get; set; }
 		int MarginPix { get; set; }
 

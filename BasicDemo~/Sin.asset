@@ -9,8 +9,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 409e5b35f94744e289c19d99c8e4799b, type: 3}
-  m_Name: Gauss10Pass
+  m_Script: {fileID: 11500000, guid: d202fcfe316a9411ba250bf60c314ad5, type: 3}
+  m_Name: Sin
   m_EditorClassIdentifier: 
-  filter: 0
-  iterations: 5
+  noiseType: 0
+  hurst: 0.87
+  startingAmplitude: 1
+  octaves: 5
+  stepdown: 1.9607
+  detuneRate: 0.04
+  noiseSize: 187

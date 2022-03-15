@@ -3,9 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 
-using xshazwar.unity;
+using xshazwar.noize;
 #if UNITY_EDITOR
-using xshazwar.unity.editor;
+using xshazwar.noize.editor;
 #endif
 
 using UnityEngine;
