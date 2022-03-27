@@ -39,21 +39,19 @@ namespace xshazwar.noize.scripts {
         public int margin = 5;
         public bool bakeMeshes;
 
-        private Dictionary<string, TileRequest> activeTiles;
-        private Dictionary<Vector2Int, GameObject> children;
+        protected Dictionary<string, TileRequest> activeTiles;
+        protected Dictionary<string, GameObject> children;
         public ConcurrentQueue<TileRequest> workQueue;
         public ConcurrentQueue<MeshStageData> bakeQueue;
 
-        private NativeArray<float> backingData;
+        protected NativeArray<float> backingData;
 
         public Material meshMaterial;
-
-        public Vector2Int target;
 
         public Action<StageIO> upstreamData;
         public Action<StageIO> upstreamMesh;
 
-        private bool isRunning;
+        protected bool isRunning;
         void Awake()
         {
             isRunning = false;
@@ -61,12 +59,15 @@ namespace xshazwar.noize.scripts {
             upstreamMesh += MeshComplete;
             activeTiles = new Dictionary<string, TileRequest>();
             workQueue = new ConcurrentQueue<TileRequest>();
-            children = new Dictionary<Vector2Int, GameObject>();
+            children = new Dictionary<string, GameObject>();
             backingData = new NativeArray<float>(generatorResolution * generatorResolution, Allocator.Persistent);
             if(bakeMeshes){
                 bakery = GetComponent<MeshBakery>();
             }
+            AfterAwake();
         }
+
+        protected virtual void AfterAwake(){}
 
         public void OnValidate(){
             if (calcTotalResolution() > generatorResolution){
@@ -89,15 +90,20 @@ namespace xshazwar.noize.scripts {
         }
 
         public void Remove(Vector2Int pos){
-            if (!children.ContainsKey(pos)){
+            string key = pos.ToString();
+            if (!children.ContainsKey(key)){
                 throw new Exception("No child exists at this position");
             }
-            Destroy(children[pos]);
-            children.Remove(pos);
-            Debug.Log($"Removing Child at {pos}");
+            OnBeforeRemove(key);
+            Destroy(children[key]);
+            children.Remove(key);
+            Debug.Log($"Removed Child at {key}");
         }
+
+        protected virtual void OnBeforeRemove(string key){}
         public void Enqueue(string id, Vector2Int pos){
-            if (children.ContainsKey(pos)){
+            string key = pos.ToString();
+            if (children.ContainsKey(key)){
                 throw new Exception("Child exists at this position");
             }
             Debug.Log($"Enqueued {id}");
@@ -106,21 +112,21 @@ namespace xshazwar.noize.scripts {
                 pos = pos
             });
         }
-        private int calcTotalResolution(){
+        protected virtual int calcTotalResolution(){
             double patchRes = (tileResolution * 1.0) / tileSize;
             // Debug.LogWarning(patchRes);
             return tileResolution + (2 * (int) Mathf.Ceil((float) (margin * patchRes)));
         }
 
-        private int calcMarginVerts(){
+        protected virtual int calcMarginVerts(){
             return (int) ((calcTotalResolution() - tileResolution) / 2);
         }
 
-        private float calculateMarginWS(){
+        protected virtual float calculateMarginWS(){
             return calcMarginVerts() * (float) ((tileSize * 1.0) / tileResolution);
         }
 
-        private void RequestTileData(TileRequest req){
+        protected virtual void RequestTileData(TileRequest req){
             Debug.Log($"requesting data for {req.uuid}");
             dataSource.Enqueue(
                 new GeneratorData {
@@ -135,7 +141,7 @@ namespace xshazwar.noize.scripts {
             );
         }
 
-        private void CreateChildMesh(Vector2Int pos, ref MeshStageData data){
+        protected virtual void CreateChildMesh(Vector2Int pos, ref MeshStageData data){
             data.mesh = new Mesh();
             GameObject go = new GameObject(pos.ToString());
             go.transform.parent = this.gameObject.transform;
@@ -146,9 +152,12 @@ namespace xshazwar.noize.scripts {
             //Add Components
             MeshFilter filter = go.AddComponent<MeshFilter>();
             MeshRenderer renderer = go.AddComponent<MeshRenderer>();
-            children[pos] = go;
-            renderer.material = meshMaterial;
-            renderer.material.EnableKeyword("_EMISSION");
+            string key = pos.ToString();
+            children[key] = go;
+            if(meshMaterial != null){
+                renderer.material = meshMaterial;
+            }
+            // renderer.material.EnableKeyword("_EMISSION");
             filter.mesh = data.mesh;
         }
         public void DataAvailable(StageIO res){
@@ -187,10 +196,11 @@ namespace xshazwar.noize.scripts {
 
         public void MeshBaked(string uuid){
             TileRequest req = activeTiles[uuid];
-            children[req.pos].AddComponent<MeshCollider>();
+            string key = req.pos.ToString();
+            children[key].AddComponent<MeshCollider>();
         }
 
-        public void OnDestroy(){
+        public virtual void OnDestroy(){
             backingData.Dispose();
         }
     }
