@@ -34,7 +34,7 @@ namespace xshazwar.noize.filter {
                 if(tmp.IsCreated){
                     tmp.Dispose();
                 }
-                tmp = new NativeArray<float>(dataLength, Allocator.Persistent);
+                tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             }
             
             jobHandle = jobs[(int)operation](
@@ -46,7 +46,7 @@ namespace xshazwar.noize.filter {
             );
         }
 
-        public override void OnJobComplete(StageIO inputData){
+        public override void TransformData(StageIO inputData){
             ReduceData d = (ReduceData) inputData;
             outputData = new GeneratorData {
                 uuid = d.uuid,

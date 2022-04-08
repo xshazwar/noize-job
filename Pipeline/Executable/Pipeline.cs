@@ -10,21 +10,22 @@ using xshazwar.noize.editor;
 #endif
 
 using UnityEngine;
-using Unity.Profiling;
+using Unity.Jobs;
 
 namespace xshazwar.noize.pipeline {
 
-    public  class PipelineWorkItem {
+    public class PipelineWorkItem {
         // Used for internal handling of work queues in pipelines
         public StageIO data;
-        public Action<StageIO> action;
+        public StageIO outputData;
+        public Action<StageIO> completeAction;
+        public Action<StageIO, JobHandle> scheduledAction;
+        public JobHandle dependency;
     }
     public abstract class BasePipeline : MonoBehaviour, IPipeline
     {
         protected bool pipelineQueued;
         protected bool pipelineRunning;
-        protected StageIO pipelineInput;
-        protected StageIO pipelineOutput;
 
         #if UNITY_EDITOR
         protected System.Diagnostics.Stopwatch wall;
@@ -32,6 +33,9 @@ namespace xshazwar.noize.pipeline {
         public string alias = "Unnamed Pipeline";
 
         protected ConcurrentQueue<PipelineWorkItem> queue;
+        protected PipelineWorkItem activeItem;
+        
+        protected JobHandle pipelineHandle;
         
         // This is a list of stages, but references the type and must be instantiated
         [SerializeField]
@@ -39,7 +43,8 @@ namespace xshazwar.noize.pipeline {
 
         protected List<PipelineStage> stage_instances;
 
-        public Action<StageIO> OnJobCompleteAction {get; set;}
+        // public Action<StageIO> OnJobCompleteAction {get; set;}
+        // public Action<StageIO, JobHandle> OnPipelineScheduledAction {get; set;}
 
         public void Start(){
             BeforeStart();
@@ -60,45 +65,70 @@ namespace xshazwar.noize.pipeline {
             this.name = $"Pipeline:{alias}";
         }
 
-        public void Enqueue(StageIO input, Action<StageIO> action){
+        public void Enqueue(
+            StageIO input,
+            Action<StageIO, JobHandle> scheduleAction = null,
+            Action<StageIO> completeAction = null,
+            JobHandle dependency = default(JobHandle)
+        ){
+
             queue.Enqueue(new PipelineWorkItem {
                 data = input,
-                action = action
+                scheduledAction = scheduleAction,
+                completeAction = completeAction,
+                dependency = dependency
             });
         }
+        public void Schedule(StageIO input,
+                Action<StageIO, JobHandle> scheduleAction = null,
+                Action<StageIO> completeAction = null,
+                JobHandle dependency = default(JobHandle)){
+            Schedule(new PipelineWorkItem {
+                data = input,
+                scheduledAction = scheduleAction,
+                completeAction = completeAction,
+                dependency = dependency
+            });
+        }
+        public void Schedule(PipelineWorkItem wi){
+            activeItem = wi;
+            Schedule();
+        }
 
-        public void Schedule(StageIO requirements, Action<StageIO> onResult){
-            // Synchronous Scheduling
+        public void Schedule(){
             if (stages == null){
                 throw new Exception("No stages in pipeline");
             }
             enabled = true;
-            
             #if UNITY_EDITOR
             wall = System.Diagnostics.Stopwatch.StartNew();
             #endif
-            
-            pipelineInput = requirements;
-            
-           OnJobCompleteAction += (StageIO res) => { 
-               Debug.Log($"PL complete {res.uuid}");
-               onResult?.Invoke(res);
-            };
+            Debug.Log($"{alias} scheduling {activeItem.data.uuid}");
+            stage_instances[0].ReceiveHandledInput(activeItem.data, activeItem.dependency);
+            OnPipelineSchedule(activeItem.data, activeItem.completeAction);
             pipelineQueued = true;
         }
 
-        public void OnFinalStageComplete(StageIO res){
-            #if UNITY_EDITOR
-            wall.Stop();
-            Debug.LogWarning($"{alias} -> {res.uuid}: {wall.ElapsedMilliseconds}ms");
-            #endif
-            pipelineRunning = false;
-            pipelineOutput = res;
-            OnJobCompleteAction?.Invoke(pipelineOutput);
-            OnJobCompleteAction = null;
-            OnPipelineComplete();
+        public void OnPipelineFullyScheduled(StageIO res, JobHandle handle){
+            pipelineHandle = handle;
+            pipelineRunning = true;
+            pipelineQueued = false;
+            activeItem.outputData = res;
+            Debug.Log($"{alias} fully scheduled {res.uuid}");
+            activeItem.scheduledAction?.Invoke(res, handle);
         }
 
+        // public void OnFinalStageComplete(StageIO res){
+        //     #if UNITY_EDITOR
+        //     wall.Stop();
+        //     Debug.LogWarning($"{alias} -> {res.uuid}: {wall.ElapsedMilliseconds}ms");
+        //     #endif
+        //     pipelineRunning = false;
+        //     pipelineOutput = res;
+        //     OnJobCompleteAction?.Invoke(pipelineOutput);
+        //     OnJobCompleteAction = null;
+        //     OnPipelineComplete(res);
+        // }
         public void Setup(){
             stage_instances = new List<PipelineStage>();
             foreach(PipelineStage stage in stages){
@@ -107,13 +137,14 @@ namespace xshazwar.noize.pipeline {
             PipelineStage previousStage = null;
             foreach(PipelineStage stage in stage_instances){
                 if(previousStage != null){
-                    previousStage.OnStageCompleteAction += stage.ReceiveInput;
+                    previousStage.OnStageScheduledAction += stage.ReceiveHandledInput;
                 }
                 previousStage = stage;
             }
-            stage_instances[stages.Count - 1].OnStageCompleteAction += OnFinalStageComplete;
+            stage_instances[stages.Count - 1].OnStageScheduledAction += OnPipelineFullyScheduled;
             Debug.Log("Pipeline Setup Complete");
         }
+
 
         public void Update(){
             BeforeUpdate();
@@ -121,23 +152,33 @@ namespace xshazwar.noize.pipeline {
             AfterUpdate();
         }
 
+        public void LateUpdate(){
+            OnLateUpdate();
+            if (pipelineRunning && pipelineHandle.IsCompleted){
+                pipelineHandle.Complete();
+                Debug.Log($"{alias} has a complete task");
+                #if UNITY_EDITOR
+                wall.Stop();
+                Debug.LogWarning($"{alias} -> {activeItem.outputData.uuid}: {wall.ElapsedMilliseconds}ms");
+                #endif
+                activeItem.completeAction?.Invoke(activeItem.outputData);
+                pipelineRunning = false;
+            }
+        }
+
         public virtual void OnUpdate(){
-            if (pipelineRunning){
-                foreach(PipelineStage stage in stage_instances){
-                    stage.OnUpdate();
-                }
-            }else if (!pipelineRunning && !pipelineQueued){
+            if (!pipelineRunning && !pipelineQueued){
                 if (queue.Count > 0){
                     PipelineWorkItem wi;
                     if (queue.TryDequeue(out wi)){
-                        Schedule(wi.data, wi.action);
+                        Schedule(wi);
                     }
                 }
-            }else if (pipelineQueued && !pipelineRunning){
-                pipelineRunning = true;
-                stage_instances[0].ReceiveInput(pipelineInput);
-                pipelineQueued = false;
             }
+        }
+
+        public virtual void OnLateUpdate(){
+
         }
 
         protected void CleanUpStages(){
@@ -158,7 +199,9 @@ namespace xshazwar.noize.pipeline {
         // Lifecycle Hooks
         protected virtual void BeforeStart(){}
         protected virtual void AfterStart(){}
-        protected virtual void OnPipelineComplete(){}
+
+        protected virtual void OnPipelineSchedule(StageIO requirements, Action<StageIO> onResult){}
+        protected virtual void OnPipelineComplete(StageIO res){}
         // Cleanup, etc
         protected virtual void BeforeUpdate(){}
         // Anything to be done before scheduling

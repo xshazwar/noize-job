@@ -35,7 +35,7 @@ namespace xshazwar.noize.filter {
             try{
                 curve.Dispose();
             }catch(Exception){}
-            curve = new NativeArray<float>(samples, Allocator.Persistent);
+            curve = new NativeArray<float>(samples, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             for (int i = 0; i < samples; i++){
                 curve[i] = unityCurve.Evaluate( (float) i / samples );
             }
@@ -48,7 +48,7 @@ namespace xshazwar.noize.filter {
                 if(tmp.IsCreated){
                     tmp.Dispose();
                 }
-                tmp = new NativeArray<float>(dataLength, Allocator.Persistent);
+                tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             }
             jobHandle = job(
                 d.data,

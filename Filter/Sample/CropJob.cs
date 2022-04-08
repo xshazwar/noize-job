@@ -27,6 +27,7 @@ namespace xshazwar.noize.filter {
         [ReadOnly]
         RO input;
         
+        [WriteOnly]
         [NativeDisableParallelForRestriction]
         [NativeDisableContainerSafetyRestriction]
         WO data ;

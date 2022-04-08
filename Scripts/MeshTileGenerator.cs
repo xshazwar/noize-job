@@ -63,7 +63,7 @@ namespace xshazwar.noize.scripts {
             activeTiles = new Dictionary<string, TileRequest>();
             workQueue = new ConcurrentQueue<TileRequest>();
             children = new Dictionary<string, GameObject>();
-            backingData = new NativeArray<float>(generatorResolution * generatorResolution, Allocator.Persistent);
+            backingData = new NativeArray<float>(generatorResolution * generatorResolution, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             if(bakeMeshes){
                 bakery = GetComponent<MeshBakery>();
             }
@@ -132,7 +132,10 @@ namespace xshazwar.noize.scripts {
             return calcMarginVerts() * (float) ((tileSize * 1.0) / tileResolution);
         }
 
+        protected virtual void OnRequestTileData(TileRequest req){}
+
         protected virtual void RequestTileData(TileRequest req){
+            OnRequestTileData(req);
             Debug.Log($"requesting data for {req.uuid}");
             dataSource.Enqueue(
                 new GeneratorData {
@@ -142,7 +145,7 @@ namespace xshazwar.noize.scripts {
                     zpos = tileResolution *  req.pos.y,
                     data = new NativeSlice<float>(backingData)
                 },
-                upstreamData
+                completeAction: upstreamData
             );
         }
 
@@ -179,7 +182,7 @@ namespace xshazwar.noize.scripts {
             // Create new Mesh Target at proper position
             CreateChildMesh(req.pos, ref mData);
             // Enqueue Work
-            meshPipeline.Enqueue(mData, MeshComplete);
+            meshPipeline.Enqueue(mData, completeAction: MeshComplete);
         }
 
         public void MeshComplete(StageIO res){

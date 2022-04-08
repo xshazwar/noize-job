@@ -17,12 +17,20 @@ namespace xshazwar.noize.filter {
         public KernelFilterType filter;
         [Range(1, 32)]
         public int iterations = 1;
+        private int dataLength = 0;
+        private NativeArray<float> tmp;
         public override void Schedule( StageIO req ){
             if (req is GeneratorData){
                 GeneratorData d = (GeneratorData) req;
                 UnityEngine.Profiling.Profiler.BeginSample("Allocate tmp");
                 // This could take a while, so we'll use Persistent. May want to logic this a bit
-                NativeArray<float> tmp = new NativeArray<float>(d.data.Length, Allocator.Persistent);
+                if(d.data.Length != dataLength){
+                    dataLength = d.data.Length;
+                    if(tmp.IsCreated){
+                        tmp.Dispose();
+                    }
+                    tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+                }
                 UnityEngine.Profiling.Profiler.EndSample();
                 JobHandle[] handles = new JobHandle[iterations];
                 for (int i = 0; i < iterations; i++){
@@ -34,12 +42,19 @@ namespace xshazwar.noize.filter {
                     }
                     UnityEngine.Profiling.Profiler.EndSample();
                 }
-                jobHandle = tmp.Dispose(handles[iterations - 1]);
+                jobHandle = handles[iterations - 1];
             }
             else{
                 throw new Exception($"Unhandled stageio {req.GetType().ToString()}");
             }
             Debug.Log("scheduled");
+        }
+
+        public override void OnDestroy()
+        {
+            if(tmp.IsCreated){
+                tmp.Dispose();
+            }
         }
     }
 }

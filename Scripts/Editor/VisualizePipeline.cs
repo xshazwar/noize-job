@@ -55,8 +55,9 @@ namespace xshazwar.noize.scripts.editor {
             try{
                 foreach(BasePipeline p in mPipeline.GetDependencies()){
                     if(p != null){
-                        Debug.Log($"Upating {p.alias}");
+                        // Debug.Log($"Upating {p.alias}");
                         p.Update();
+                        p.LateUpdate();
                     }
                 }
             }catch(NullReferenceException){
@@ -137,7 +138,7 @@ namespace xshazwar.noize.scripts.editor {
                         zpos = resolution *  zpos,
                         data = new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>((int)inputChannel)
                     },
-                    pipelineComplete
+                    completeAction: pipelineComplete
                 );
             }catch(NullReferenceException){
                 Debug.LogError("Could not run pipeline");

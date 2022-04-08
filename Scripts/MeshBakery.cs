@@ -38,7 +38,9 @@ namespace xshazwar.noize.scripts {
         }
 
         public void Destroy(){
-            meshes.Dispose();
+            if(meshes.IsCreated){
+                meshes.Dispose();
+            }
         }
 
         public void Update(){
