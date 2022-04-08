@@ -16,7 +16,7 @@ namespace xshazwar.noize.pipeline {
 
         StageIO inputData;
         StageIO inputOverride;
-        StageIO outputData;
+        protected StageIO outputData;
         public Action<StageIO>OnStageCompleteAction {get; set;}
 
         public void OnEnable(){
@@ -47,7 +47,7 @@ namespace xshazwar.noize.pipeline {
                 stageTriggered = false;
                 stageQueued = false;
                 jobHandle.Complete();
-                outputData = inputData; // TODO put this somewhere in the subclass?
+                OnJobComplete(inputData);
                 OnStageCompleteAction?.Invoke(outputData);
                 OnStageComplete();
             }
@@ -57,6 +57,14 @@ namespace xshazwar.noize.pipeline {
                 Schedule(inputData);
                 stageQueued = false;
             }
+        }
+
+        public void Destroy(){
+            OnDestroy();
+        }
+
+        public virtual void OnJobComplete(StageIO inputData){
+            outputData = inputData;
         }
         public virtual void OnStageComplete(){}
         public virtual void OnDestroy(){}

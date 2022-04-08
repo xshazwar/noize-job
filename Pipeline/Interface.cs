@@ -13,6 +13,7 @@ namespace xshazwar.noize.pipeline {
 
     public interface IScheduleJobCallback{
         
+        public void Enqueue(StageIO requirements, Action<StageIO> onResult);
         public void Schedule(StageIO requirements, Action<StageIO> onResult);
         public void OnUpdate();
 

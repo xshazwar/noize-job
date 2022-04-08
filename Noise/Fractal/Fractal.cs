@@ -93,7 +93,7 @@ namespace xshazwar.noize.generate {
         public int JobLength {get; set;}
         public int Resolution {get; set;}
 
-        // [0, 1]
+        // [0, 1] recommended, but we allow up to 2
         public float Hurst {get; set;}
         public int OctaveCount {get; set;}
         public float StartingAmplitude {get; set;}

@@ -5,34 +5,39 @@ using System.Collections.Concurrent;
 
 using xshazwar.noize;
 #if UNITY_EDITOR
+using static System.Diagnostics.Stopwatch;
 using xshazwar.noize.editor;
 #endif
 
 using UnityEngine;
+using Unity.Profiling;
 
 namespace xshazwar.noize.pipeline {
 
-    internal class PipelineWorkItem {
+    public  class PipelineWorkItem {
         // Used for internal handling of work queues in pipelines
         public StageIO data;
         public Action<StageIO> action;
     }
     public abstract class BasePipeline : MonoBehaviour, IPipeline
     {
-        bool pipelineQueued;
-        bool pipelineRunning;
-        StageIO pipelineInput;
-        StageIO pipelineOutput;
+        protected bool pipelineQueued;
+        protected bool pipelineRunning;
+        protected StageIO pipelineInput;
+        protected StageIO pipelineOutput;
 
+        #if UNITY_EDITOR
+        protected System.Diagnostics.Stopwatch wall;
+        #endif
         public string alias = "Unnamed Pipeline";
 
-        ConcurrentQueue<PipelineWorkItem> queue;
+        protected ConcurrentQueue<PipelineWorkItem> queue;
         
         // This is a list of stages, but references the type and must be instantiated
         [SerializeField]
         public List<PipelineStage> stages;
 
-        private List<PipelineStage> stage_instances;
+        protected List<PipelineStage> stage_instances;
 
         public Action<StageIO> OnJobCompleteAction {get; set;}
 
@@ -45,6 +50,10 @@ namespace xshazwar.noize.pipeline {
             // enabled = false;
             Setup();
             AfterStart();
+        }
+
+        public virtual BasePipeline[] GetDependencies(){
+            return new BasePipeline[]{ this };
         }
 
         void OnValidate(){
@@ -64,6 +73,11 @@ namespace xshazwar.noize.pipeline {
                 throw new Exception("No stages in pipeline");
             }
             enabled = true;
+            
+            #if UNITY_EDITOR
+            wall = System.Diagnostics.Stopwatch.StartNew();
+            #endif
+            
             pipelineInput = requirements;
             
            OnJobCompleteAction += (StageIO res) => { 
@@ -74,6 +88,10 @@ namespace xshazwar.noize.pipeline {
         }
 
         public void OnFinalStageComplete(StageIO res){
+            #if UNITY_EDITOR
+            wall.Stop();
+            Debug.LogWarning($"{alias} -> {res.uuid}: {wall.ElapsedMilliseconds}ms");
+            #endif
             pipelineRunning = false;
             pipelineOutput = res;
             OnJobCompleteAction?.Invoke(pipelineOutput);
@@ -103,7 +121,7 @@ namespace xshazwar.noize.pipeline {
             AfterUpdate();
         }
 
-        public void OnUpdate(){
+        public virtual void OnUpdate(){
             if (pipelineRunning){
                 foreach(PipelineStage stage in stage_instances){
                     stage.OnUpdate();
@@ -132,7 +150,7 @@ namespace xshazwar.noize.pipeline {
             }
         }
 
-        public void OnDestroy()
+        public virtual void OnDestroy()
         {
             CleanUpStages();
         }

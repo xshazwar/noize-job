@@ -65,14 +65,18 @@ namespace xshazwar.noize.filter {
 			CurveSize = curveSize;
 		}
         
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public float Apply(float v, NativeSlice<float> curve){
 			// Expects [0,1] range
 			// We'll grab adjacent curve values and lerp as best we can
 			float rect = clamp(v, 0, 1) * CurveSize;
-			float lowerIdx = floor(rect);
+			float lowerIdx = min(floor(rect), CurveSize - 2);
 			float left =  curve[(int)lowerIdx];
 			float right = curve[(int)lowerIdx + 1];
-			return lerp(left, right, (rect - lowerIdx));
+			float value = lerp(left, right, (rect - lowerIdx));
+			value = max(0f, value);
+			value = min(1f, value);
+			return value;
 		}
 		
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

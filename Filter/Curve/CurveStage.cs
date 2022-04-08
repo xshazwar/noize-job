@@ -16,6 +16,9 @@ namespace xshazwar.noize.filter {
         private NativeArray<float> curve;
         public int samples = 256;
 
+        private int dataLength = 0;
+        private NativeArray<float> tmp;
+
         void OnValidate(){
             if (unityCurve != null){
                 ExtractCurve();
@@ -40,20 +43,29 @@ namespace xshazwar.noize.filter {
 
         public override void Schedule( StageIO req ){
             GeneratorData d = (GeneratorData) req;
-            NativeArray<float> tmp = new NativeArray<float>(d.data.Length, Allocator.Persistent);
-            jobHandle = tmp.Dispose(job(
+            if(d.data.Length != dataLength){
+                dataLength = d.data.Length;
+                if(tmp.IsCreated){
+                    tmp.Dispose();
+                }
+                tmp = new NativeArray<float>(dataLength, Allocator.Persistent);
+            }
+            jobHandle = job(
                 d.data,
                 tmp,
                 new NativeSlice<float>(curve),
                 d.resolution,
                 default
-            ));
+            );
         }
 
         public override void OnDestroy()
         {
             if (curve.IsCreated){
                 curve.Dispose();
+            }
+            if(tmp.IsCreated){
+                tmp.Dispose();
             }
         }
     }

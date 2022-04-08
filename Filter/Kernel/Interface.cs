@@ -46,6 +46,15 @@ namespace xshazwar.noize.filter {
                 where V: struct, IReadOnlyTile; 
     }
 
+    public interface IConstantTiles : ICommonTileSettings {
+        // tile A is left side, factor is constant in operation
+        // result put onto A
+
+        public float ConstantValue {get; set;}
+        void Execute<T>(int i, T tileA) 
+                where  T : struct, IRWTile; 
+    }
+
     public interface IApplyCurve: ICommonTileSettings {
         public int CurveSize {get; set;}
         public void Setup(int resolution, int jobLength, int curveSize);

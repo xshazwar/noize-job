@@ -31,7 +31,7 @@ namespace xshazwar.noize.generate {
         };
 
         public FractalNoise noiseType;
-        [Range(0f, 1f)]
+        [Range(0f, 2f)]
         public float hurst = 0f;
         
         [Range(.5f, 5f)]
@@ -46,7 +46,7 @@ namespace xshazwar.noize.generate {
         [Range(-.05f, .05f)]
         public float detuneRate = 0f;
 
-        [Range(5, 10000)]
+        [Range(5, 32000)]
         public int noiseSize = 1000;
         public override void Schedule( StageIO req ){
             GeneratorData d = (GeneratorData) req;

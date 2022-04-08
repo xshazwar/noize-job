@@ -13,38 +13,31 @@ namespace xshazwar.noize.filter {
     using Unity.Mathematics;
 
 	[BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
-	public struct ReductionJob<G, DL, DR> : IJobFor
-		where G : struct, IReduceTiles
-		where DL : struct, IRWTile
-        where DR : struct, IReadOnlyTile {
+	public struct ConstantJob<G, DL> : IJobFor
+		where G : struct, IConstantTiles
+		where DL : struct, IRWTile{
 
 		G generator;
 
 		[NativeDisableParallelForRestriction]
         [NativeDisableContainerSafetyRestriction]
 		DL dataL;
-        [NativeDisableParallelForRestriction]
-        [NativeDisableContainerSafetyRestriction]
-        [ReadOnly]
-        DR dataR;
 
-		public void Execute (int i) => generator.Execute(i, dataL, dataR);
+		public void Execute (int i) => generator.Execute(i, dataL);
 
 		public static JobHandle ScheduleParallel (
 			NativeSlice<float> srcL, //receives output
-            NativeSlice<float> srcR,
 			NativeSlice<float> tmp, // long lived temporary buffer for rw tiles
+            float constantValue,
             int resolution,
             JobHandle dependency
 		) {
-			var job = new ReductionJob<G, DL, DR>();
+			var job = new ConstantJob<G, DL>();
 			job.generator.Resolution = resolution;
             job.generator.JobLength = resolution;
+            job.generator.ConstantValue = constantValue;
 			job.dataL.Setup(
 				srcL, tmp, resolution
-			);
-            job.dataR.Setup(
-				srcR, resolution
 			);
 			JobHandle handle = job.ScheduleParallel(
 				job.generator.JobLength, 1, dependency
@@ -53,10 +46,10 @@ namespace xshazwar.noize.filter {
 		}
 	}
 
-	public delegate JobHandle ReductionJobScheduleDelegate (
+	public delegate JobHandle ConstantJobScheduleDelegate (
         NativeSlice<float> srcL, //receives output
-        NativeSlice<float> srcR,
-		NativeSlice<float> tmp, // long lived temporary buffer for rw tiles
+        NativeSlice<float> tmp, // long lived temporary buffer for rw tiles
+        float constantValue,
         int resolution,
         JobHandle dependency
 	);

@@ -23,14 +23,14 @@ namespace xshazwar.noize.scripts.editor {
     }
     public class VisualizePipelineWindow : EditorWindow
     {
-        GeneratorPipeline mPipeline;
+        BasePipeline mPipeline;
         Texture2D texture;
 
         public int resolution = 256;
         public int xpos = 0;
         public int zpos = 0;
 
-        private bool isRunning = false;
+        public bool isRunning = false;
         private bool useInputTexture = false;
         private CHANNEL inputChannel = 0;
 
@@ -49,10 +49,21 @@ namespace xshazwar.noize.scripts.editor {
         }
 
         public void OnUpdate(){
-            if (! isRunning){
+            if (! isRunning || mPipeline == null){
                 return;
             }
-            mPipeline.Update();
+            try{
+                foreach(BasePipeline p in mPipeline.GetDependencies()){
+                    if(p != null){
+                        Debug.Log($"Upating {p.alias}");
+                        p.Update();
+                    }
+                }
+            }catch(NullReferenceException){
+                Debug.LogError("Could not update pipelines");
+                isRunning = false;
+            }
+                
         }
 
         void OnEnable(){
@@ -63,8 +74,11 @@ namespace xshazwar.noize.scripts.editor {
         void OnDisable(){
             EditorApplication.update -= OnUpdate;
             pipelineComplete -= OnPipelineComplete;
-            if(mPipeline != null){
-                mPipeline.OnDestroy();
+            foreach(BasePipeline p in mPipeline.GetDependencies()){
+                if(p != null){
+                    Debug.Log($"destroying {p.alias}");
+                    p.OnDestroy();
+                }
             }
         }
 
@@ -97,9 +111,11 @@ namespace xshazwar.noize.scripts.editor {
         }
 
         void OnPipelineComplete(StageIO res){
+            Debug.Log("Pipeline complete for visualizer, apply image -> visualizer");
             GeneratorData d = (GeneratorData) res;
             isRunning = false;
             ApplyTexture(d.data);
+            Debug.Log("Image Applied.");
         }
 
         void CreateTexture(){
@@ -107,20 +123,26 @@ namespace xshazwar.noize.scripts.editor {
         }
 
         public void RunPipeline(){
-            isRunning = true;
-            if (texture == null){
-                CreateTexture();
+            try{
+                Debug.Log("new pipeline run");
+                isRunning = true;
+                if (texture == null){
+                    CreateTexture();
+                }
+                mPipeline.Enqueue(
+                    new GeneratorData {
+                        uuid = "gui job",
+                        resolution = resolution,
+                        xpos = resolution *  xpos,
+                        zpos = resolution *  zpos,
+                        data = new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>((int)inputChannel)
+                    },
+                    pipelineComplete
+                );
+            }catch(NullReferenceException){
+                Debug.LogError("Could not run pipeline");
+                isRunning = false;
             }
-            mPipeline.Enqueue(
-                new GeneratorData {
-                    uuid = "gui job",
-                    resolution = resolution,
-                    xpos = resolution *  xpos,
-                    zpos = resolution *  zpos,
-                    data = new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>((int)inputChannel)
-                },
-                pipelineComplete
-            );
         }
 
         void OnGUI()
@@ -150,18 +172,24 @@ namespace xshazwar.noize.scripts.editor {
 
             }
             EditorGUI.BeginChangeCheck();
-                mPipeline = (GeneratorPipeline)EditorGUI.ObjectField(new Rect(3, 100 + offset, 400, 20),
+                mPipeline = (BasePipeline)EditorGUI.ObjectField(new Rect(3, 100 + offset, 400, 20),
                     "Select Pipeline:",
                     mPipeline,
-                    typeof(GeneratorPipeline),
+                    typeof(BasePipeline),
                     true);
             if (EditorGUI.EndChangeCheck())
             {
-                if (mPipeline != null && mPipeline.stages.Count > 0){
-                    mPipeline.Start();
-                }else{
-                    Debug.LogError("No stages in pipeline");
+                if( mPipeline != null){
+                    Debug.Log($"Setting up {mPipeline.alias}");
+                    foreach(BasePipeline pl in mPipeline.GetDependencies()){
+                        if (pl != null && pl.stages.Count > 0){
+                            pl.Start();
+                        }else{
+                            Debug.LogError("No stages in pipeline");
+                        }
+                    }
                 }
+                
             }
             EditorGUI.BeginChangeCheck();
                 if(useInputTexture){
@@ -187,11 +215,27 @@ namespace xshazwar.noize.scripts.editor {
             }
 
             if (GUI.Button(new Rect(10, 140 + offset, 100, 30), "Run Pipeline")){
+                
                 if (isRunning == false && mPipeline != null){
-                    mPipeline.OnDestroy();
-                    mPipeline.Start();
+                    foreach(BasePipeline pl in mPipeline.GetDependencies()){
+                        if (pl != null && pl.stages.Count > 0){
+                            Debug.Log($"restarting {pl.alias}");
+                            pl.OnDestroy();
+                            pl.Start();
+                        }else{
+                            Debug.LogError("No stages in pipeline");
+                        }
+                    }
                     RunPipeline();
+                }else{
+                    Debug.Log($"running {isRunning} | pipeline not null ? {mPipeline != null}");
                 }
+
+                // if (isRunning == false && mPipeline != null){
+                //     mPipeline.OnDestroy();
+                //     mPipeline.Start();
+                //     RunPipeline();
+                // }
             }
             if( inputTexture != null){
                 if (GUI.Button(new Rect(10, 100 + offset, 100, 30), "Reset Source")){

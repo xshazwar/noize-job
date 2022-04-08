@@ -1,3 +1,4 @@
+// ErosionStageSubtractiveFlow.cs
 using System;
 using UnityEngine;
 using UnityEngine.Profiling;
@@ -12,27 +13,34 @@ using xshazwar.noize.filter;
 
 namespace xshazwar.noize.geologic {
 
-    [CreateAssetMenu(fileName = "FlowMapStage", menuName = "Noize/Geologic/FlowMap", order = 2)]
-    public class FlowMapStage: PipelineStage {
+    [CreateAssetMenu(fileName = "ErosionSubtractiveFlowStage", menuName = "Noize/Geologic/Erosion/SubtractiveFlow", order = 2)]
+    public class ErosionStageSubtractiveFlow: PipelineStage {
 
         [Range(1, 32)]
-        public int iterations = 5;
+        public int flowIterations = 5;
         private int resolution = 0;
 
         public float normMin = -.1f;
         public float normMax = .1f;
+
+        public float erosiveFactor = .1f;
+        public int erosiveIterations = 5;
         
         static FillArrayJobDelegate fillStage = FillArrayJob.ScheduleParallel;
         static FlowMapStepComputeFlowDelegate flowStage =  FlowMapStepComputeFlow<ComputeFlowStep, ReadTileData, RWTileData>.ScheduleParallel;
         static FlowMapStepUpdateWaterDelegate waterStage = FlowMapStepUpdateWater<UpdateWaterStep, ReadTileData, RWTileData>.ScheduleParallel;
-        static FlowMapWriteValuesDelegate writeStage = FlowMapWriteValues<CreateVelocityField, ReadTileData, WriteTileData>.ScheduleParallel;
-        static MapNormalizeValuesDelegate normStage = MapNormalizeValues<NormalizeMap, RWTileData>.ScheduleParallel;
+        static FlowMapWriteValuesDelegate writeVelocityStage = FlowMapWriteValues<CreateVelocityField, ReadTileData, WriteTileData>.ScheduleParallel;
+        static MapNormalizeValuesDelegate normVelocityStage = MapNormalizeValues<NormalizeMap, RWTileData>.ScheduleParallel;
+        static ConstantJobScheduleDelegate scaleErosionStage = ConstantJob<ConstantMultiply, RWTileData>.ScheduleParallel;
+        static ReductionJobScheduleDelegate erodeHeightStage = ReductionJob<SubtractTiles, RWTileData, ReadTileData>.ScheduleParallel;
 
         private const int READ = 0;
         private const int WRITE = 1;
+
         bool arraysInitialized = false;
         bool arraysReady;
         NativeArray<float> tmp;
+        NativeArray<float> velocityMap;
         NativeArray<float> normArgs;
         NativeArray<float>[] waterMap;
         NativeArray<float>[] flowMapN;
@@ -42,6 +50,7 @@ namespace xshazwar.noize.geologic {
 
         void InitArrays(int size){
             if(arraysReady){
+                Debug.Log("Arrays already ready? Not going to initialize...");
                 return;
             }
             UnityEngine.Profiling.Profiler.BeginSample("Allocate Arrays");
@@ -50,6 +59,7 @@ namespace xshazwar.noize.geologic {
                 Allocator.Persistent
             );
             tmp = new NativeArray<float>(size, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            velocityMap = new NativeArray<float>(size, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             waterMap[READ] = new NativeArray<float>(size, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             waterMap[WRITE] = new NativeArray<float>(size, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             flowMapN[READ] = new NativeArray<float>(size, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
@@ -62,8 +72,8 @@ namespace xshazwar.noize.geologic {
             flowMapW[WRITE] = new NativeArray<float>(size, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             arraysReady = true;
             UnityEngine.Profiling.Profiler.EndSample();
-            Debug.Log("Arrays Ready");
         }
+
 
         public void DisposeArrays(){
             if(tmp.IsCreated){
@@ -71,6 +81,9 @@ namespace xshazwar.noize.geologic {
             }
             if(normArgs.IsCreated){
                 normArgs.Dispose();
+            }
+            if(velocityMap.IsCreated){
+                velocityMap.Dispose();
             }
             if(waterMap == null){
                 return;
@@ -112,6 +125,7 @@ namespace xshazwar.noize.geologic {
         void OnValidate(){}
 
         void Awake(){
+            Debug.Log("Subtractive awake");
             arraysReady = false;
             waterMap = new NativeArray<float>[2];
             flowMapN = new NativeArray<float>[2];
@@ -121,14 +135,14 @@ namespace xshazwar.noize.geologic {
             arraysInitialized = true;
         }
 
-        private void ScheduleAll(NativeSlice<float> src){
-            JobHandle[] handles = new JobHandle[iterations * 2];
-            for (int i = 0; i < 2 * iterations; i += 2){
+        private JobHandle ScheduleCycle(NativeSlice<float> heights, int currentFlowIterations, JobHandle dependency){
+            JobHandle[] handles = new JobHandle[currentFlowIterations * 2];
+            for (int i = 0; i < 2 * currentFlowIterations; i += 2){
                 UnityEngine.Profiling.Profiler.BeginSample("Enqueue Step");
                 if (i == 0){
-                    JobHandle fillHandle = fillStage(waterMap[READ], resolution, 0.0001f, default);
+                    JobHandle fillHandle = fillStage(waterMap[READ], resolution, 0.0001f, dependency);
                     handles[0] = flowStage(
-                            src,
+                            heights,
                             new NativeSlice<float>(waterMap[READ]),
                             new NativeSlice<float>(flowMapN[READ]),
                             new NativeSlice<float>(flowMapN[WRITE]),
@@ -151,7 +165,7 @@ namespace xshazwar.noize.geologic {
                             handles[i]);
                 }else{
                     handles[i] = flowStage(
-                            src,  
+                            heights,  
                             new NativeSlice<float>(waterMap[READ]),
                             new NativeSlice<float>(flowMapN[READ]),
                             new NativeSlice<float>(flowMapN[WRITE]),
@@ -176,21 +190,43 @@ namespace xshazwar.noize.geologic {
                 UnityEngine.Profiling.Profiler.EndSample();  
             }
 
-            JobHandle writeHandle = writeStage(
-                            src,
+            JobHandle writeHandle = writeVelocityStage(
+                            velocityMap,
                             new NativeSlice<float>(flowMapN[READ]),
                             new NativeSlice<float>(flowMapS[READ]),
                             new NativeSlice<float>(flowMapE[READ]),
                             new NativeSlice<float>(flowMapW[READ]),
                             resolution,
-                            handles[(iterations * 2) - 1]);
-            jobHandle = normStage(
-                            src,
+                            handles[(currentFlowIterations * 2) - 1]);
+            JobHandle normHandle = normVelocityStage(
+                            velocityMap,
                             tmp,
                             normArgs,
                             resolution,
                             writeHandle
             );
+            JobHandle scaleErosionHandle = scaleErosionStage(
+                            velocityMap,
+                            tmp,
+                            erosiveFactor,
+                            resolution,
+                            normHandle
+            );
+            return erodeHeightStage(
+                            heights,
+                            velocityMap,
+                            tmp,
+                            resolution,
+                            scaleErosionHandle
+            );
+        }
+
+        private void ScheduleAll(NativeSlice<float> heights){
+            JobHandle lastHandle = default;
+            for(int n = 0; n < erosiveIterations; n++){
+                lastHandle = ScheduleCycle(heights, n + 1, lastHandle);
+            }
+            jobHandle = lastHandle;
         }
 
         public override void Schedule( StageIO req ){
@@ -199,8 +235,8 @@ namespace xshazwar.noize.geologic {
                 Awake();
             }
             if (d.resolution != resolution){
-                Debug.Log("New resolution requires creation of all buffers, expect alloc");
                 resolution = d.resolution;
+                Debug.Log($"New resolution requires creation of all buffers, expect alloc: {resolution}sq");
                 DisposeArrays();
                 InitArrays(resolution * resolution);
             }

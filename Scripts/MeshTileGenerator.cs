@@ -27,10 +27,13 @@ namespace xshazwar.noize.scripts {
     [AddComponentMenu("Noize/MeshTileGenerator", 0)]
     public class MeshTileGenerator : MonoBehaviour {
         
-        public GeneratorPipeline dataSource;
-        public GeneratorPipeline meshPipeline;
+        public BasePipeline dataSource;
+        public BasePipeline meshPipeline;
         public MeshBakery bakery;
 
+        public int GenTileOffsetX = 0;
+        public int GenTileOffsetZ = 0;
+        
         public int tileHeight = 1000;
         public int tileSize = 1000;
 
@@ -76,6 +79,7 @@ namespace xshazwar.noize.scripts {
         }
 
         public void Update(){
+            OnUpdate();
             if(!isRunning){
                 if (workQueue.Count > 0){
                     TileRequest req;
@@ -89,6 +93,8 @@ namespace xshazwar.noize.scripts {
             }
         }
 
+        protected virtual void OnUpdate(){}
+
         public void Remove(Vector2Int pos){
             string key = pos.ToString();
             if (!children.ContainsKey(key)){
@@ -101,20 +107,20 @@ namespace xshazwar.noize.scripts {
         }
 
         protected virtual void OnBeforeRemove(string key){}
-        public void Enqueue(string id, Vector2Int pos){
+        public void Enqueue(string id, Vector2Int posIn){
+            Vector2Int pos = new Vector2Int(posIn.x + GenTileOffsetX, posIn.y + GenTileOffsetZ);
             string key = pos.ToString();
             if (children.ContainsKey(key)){
                 throw new Exception("Child exists at this position");
             }
             Debug.Log($"Enqueued {id}");
             workQueue.Enqueue(new TileRequest{
-                uuid = id,
+                uuid = key,
                 pos = pos
             });
         }
         protected virtual int calcTotalResolution(){
             double patchRes = (tileResolution * 1.0) / tileSize;
-            // Debug.LogWarning(patchRes);
             return tileResolution + (2 * (int) Mathf.Ceil((float) (margin * patchRes)));
         }
 
@@ -131,7 +137,6 @@ namespace xshazwar.noize.scripts {
             dataSource.Enqueue(
                 new GeneratorData {
                     uuid = req.uuid,
-                    // resolution = calcTotalResolution(),
                     resolution = generatorResolution,
                     xpos = tileResolution *  req.pos.x,
                     zpos = tileResolution *  req.pos.y,
@@ -157,7 +162,6 @@ namespace xshazwar.noize.scripts {
             if(meshMaterial != null){
                 renderer.material = meshMaterial;
             }
-            // renderer.material.EnableKeyword("_EMISSION");
             filter.mesh = data.mesh;
         }
         public void DataAvailable(StageIO res){
@@ -191,14 +195,20 @@ namespace xshazwar.noize.scripts {
                 meshID = d.mesh.GetInstanceID(),
                 onCompleteBake = (string uuid) => MeshBaked(uuid)
             });
-            isRunning = false;     
+            isRunning = false;
+            OnMeshComplete(d);   
         }
 
+        protected virtual void OnMeshComplete(MeshStageData d){}
+    
         public void MeshBaked(string uuid){
             TileRequest req = activeTiles[uuid];
             string key = req.pos.ToString();
             children[key].AddComponent<MeshCollider>();
+            OnMeshBaked(uuid);
         }
+
+        protected virtual void OnMeshBaked(string uuid){}
 
         public virtual void OnDestroy(){
             backingData.Dispose();
