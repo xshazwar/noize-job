@@ -41,7 +41,7 @@ namespace xshazwar.noize.filter {
             }
         }
 
-        public override void Schedule( StageIO req ){
+        public override void Schedule( StageIO req, JobHandle dep ){
             GeneratorData d = (GeneratorData) req;
             if(d.data.Length != dataLength){
                 dataLength = d.data.Length;
@@ -55,7 +55,7 @@ namespace xshazwar.noize.filter {
                 tmp,
                 new NativeSlice<float>(curve),
                 d.resolution,
-                default
+                dep
             );
         }
 

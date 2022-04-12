@@ -19,7 +19,7 @@ namespace xshazwar.noize.filter {
         public int iterations = 1;
         private int dataLength = 0;
         private NativeArray<float> tmp;
-        public override void Schedule( StageIO req ){
+        public override void Schedule( StageIO req, JobHandle dep){
             if (req is GeneratorData){
                 GeneratorData d = (GeneratorData) req;
                 UnityEngine.Profiling.Profiler.BeginSample("Allocate tmp");
@@ -36,7 +36,7 @@ namespace xshazwar.noize.filter {
                 for (int i = 0; i < iterations; i++){
                     UnityEngine.Profiling.Profiler.BeginSample("Enqueue Step");
                     if (i == 0){
-                        handles[i] = job(d.data, tmp, filter, d.resolution, default);
+                        handles[i] = job(d.data, tmp, filter, d.resolution, dep);
                     }else{
                         handles[i] = job(d.data, tmp, filter, d.resolution, handles[i - 1]);
                     }

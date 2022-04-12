@@ -231,12 +231,6 @@ namespace xshazwar.noize.scripts.editor {
                 }else{
                     Debug.Log($"running {isRunning} | pipeline not null ? {mPipeline != null}");
                 }
-
-                // if (isRunning == false && mPipeline != null){
-                //     mPipeline.OnDestroy();
-                //     mPipeline.Start();
-                //     RunPipeline();
-                // }
             }
             if( inputTexture != null){
                 if (GUI.Button(new Rect(10, 100 + offset, 100, 30), "Reset Source")){

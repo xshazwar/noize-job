@@ -46,7 +46,7 @@ namespace xshazwar.noize.filter {
 				src, dst, resolution
 			);
 			JobHandle handle = job.ScheduleParallel(
-				job.kernelPass.JobLength, 8, dependency
+				job.kernelPass.JobLength, 1, dependency
 			);
             return TileHelpers.SWAP_RWTILE(src, dst, handle);
 

@@ -121,12 +121,12 @@ namespace xshazwar.noize.geologic {
             arraysInitialized = true;
         }
 
-        private void ScheduleAll(NativeSlice<float> src){
+        private void ScheduleAll(NativeSlice<float> src, JobHandle dep){
             JobHandle[] handles = new JobHandle[iterations * 2];
             for (int i = 0; i < 2 * iterations; i += 2){
                 UnityEngine.Profiling.Profiler.BeginSample("Enqueue Step");
                 if (i == 0){
-                    JobHandle fillHandle = fillStage(waterMap[READ], resolution, 0.0001f, default);
+                    JobHandle fillHandle = fillStage(waterMap[READ], resolution, 0.0001f, dep);
                     handles[0] = flowStage(
                             src,
                             new NativeSlice<float>(waterMap[READ]),
@@ -193,7 +193,7 @@ namespace xshazwar.noize.geologic {
             );
         }
 
-        public override void Schedule( StageIO req ){
+        public override void Schedule( StageIO req, JobHandle dep ){
             GeneratorData d = (GeneratorData) req;
             if (!arraysInitialized){
                 Awake();
@@ -204,7 +204,7 @@ namespace xshazwar.noize.geologic {
                 DisposeArrays();
                 InitArrays(resolution * resolution);
             }
-            ScheduleAll(d.data);
+            ScheduleAll(d.data, dep);
         }
         
         public override void OnDestroy(){

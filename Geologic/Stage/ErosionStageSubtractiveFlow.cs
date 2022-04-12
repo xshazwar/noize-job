@@ -221,15 +221,15 @@ namespace xshazwar.noize.geologic {
             );
         }
 
-        private void ScheduleAll(NativeSlice<float> heights){
-            JobHandle lastHandle = default;
+        private void ScheduleAll(NativeSlice<float> heights, JobHandle dep){
+            JobHandle lastHandle = dep;
             for(int n = 0; n < erosiveIterations; n++){
                 lastHandle = ScheduleCycle(heights, n + 1, lastHandle);
             }
             jobHandle = lastHandle;
         }
 
-        public override void Schedule( StageIO req ){
+        public override void Schedule( StageIO req, JobHandle dep ){
             GeneratorData d = (GeneratorData) req;
             if (!arraysInitialized){
                 Awake();
@@ -240,7 +240,7 @@ namespace xshazwar.noize.geologic {
                 DisposeArrays();
                 InitArrays(resolution * resolution);
             }
-            ScheduleAll(d.data);
+            ScheduleAll(d.data, dep);
         }
         
         public override void OnDestroy(){

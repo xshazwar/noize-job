@@ -27,7 +27,7 @@ namespace xshazwar.noize.filter {
         private int dataLength = 0;
         private NativeArray<float> tmp;
 
-        public override void Schedule( StageIO req ){
+        public override void Schedule( StageIO req, JobHandle dep ){
             ReduceData d = (ReduceData) req;
             if(d.data.Length != dataLength){
                 dataLength = d.data.Length;
@@ -42,7 +42,7 @@ namespace xshazwar.noize.filter {
                 d.rightData,
                 tmp,
                 d.resolution,
-                default
+                dep
             );
         }
 

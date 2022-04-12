@@ -24,7 +24,7 @@ namespace xshazwar.noize.pipeline {
             // stageQueued = false;
             // stageTriggered = false;
         }
-        public abstract void Schedule( StageIO requirements );
+        public abstract void Schedule( StageIO requirements, JobHandle dependency );
         // Schedule job with input data.
         // Setup output data
         // Set job handle
@@ -33,7 +33,7 @@ namespace xshazwar.noize.pipeline {
         // }
         
         public void ReceiveHandledInput(StageIO inputData, JobHandle dependency){
-            Schedule(inputData);
+            Schedule(inputData, dependency);
             TransformData(inputData);
             OnStageScheduled(outputData, jobHandle);
         }

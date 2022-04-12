@@ -9,7 +9,7 @@ namespace xshazwar.noize.pipeline {
     public interface IStage : IScheduleStage, IStageBroadcaster, IJobTarget {}
 
     public interface IScheduleStage {
-        public void Schedule(StageIO requirements);
+        public void Schedule(StageIO requirements, JobHandle dependency);
         // public void OnUpdate();
     }
 
