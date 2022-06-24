@@ -156,6 +156,7 @@ namespace xshazwar.noize.pipeline {
             OnLateUpdate();
             if (pipelineRunning && pipelineHandle.IsCompleted){
                 pipelineHandle.Complete();
+                CleanUp();
                 Debug.Log($"{alias} has a complete task");
                 #if UNITY_EDITOR
                 wall.Stop();
@@ -177,11 +178,21 @@ namespace xshazwar.noize.pipeline {
             }
         }
 
+        public virtual void CleanUp(){
+            foreach(PipelineStage stage in stage_instances){
+                try{
+                    stage.OnStageComplete();
+                }catch(Exception err){
+                    Debug.LogError(err);
+                }
+            }
+        }
+
         public virtual void OnLateUpdate(){
 
         }
 
-        protected void CleanUpStages(){
+        protected void DestroyStages(){
             foreach(PipelineStage stage in stage_instances){
                 try{
                     stage.OnDestroy();
@@ -193,7 +204,7 @@ namespace xshazwar.noize.pipeline {
 
         public virtual void OnDestroy()
         {
-            CleanUpStages();
+            DestroyStages();
         }
         
         // Lifecycle Hooks

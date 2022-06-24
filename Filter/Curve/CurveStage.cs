@@ -15,27 +15,20 @@ namespace xshazwar.noize.filter {
         public AnimationCurve unityCurve;
         private NativeArray<float> curve;
         public int samples = 256;
-
         private int dataLength = 0;
         private NativeArray<float> tmp;
-
-        void OnValidate(){
-            if (unityCurve != null){
-                ExtractCurve();
-            }
-        }
 
         void Awake(){
             if (unityCurve != null){
                 ExtractCurve();
             }
-        }
+        }   
 
         private void ExtractCurve(){
-            try{
-                curve.Dispose();
-            }catch(Exception){}
-            curve = new NativeArray<float>(samples, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            if (!curve.IsCreated){
+                curve = new NativeArray<float>(samples, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            }
+            
             for (int i = 0; i < samples; i++){
                 curve[i] = unityCurve.Evaluate( (float) i / samples );
             }
@@ -45,10 +38,9 @@ namespace xshazwar.noize.filter {
             GeneratorData d = (GeneratorData) req;
             if(d.data.Length != dataLength){
                 dataLength = d.data.Length;
-                if(tmp.IsCreated){
-                    tmp.Dispose();
+                if(!tmp.IsCreated){
+                    tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
                 }
-                tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             }
             jobHandle = job(
                 d.data,
@@ -63,9 +55,11 @@ namespace xshazwar.noize.filter {
         {
             if (curve.IsCreated){
                 curve.Dispose();
+                curve = default;
             }
             if(tmp.IsCreated){
                 tmp.Dispose();
+                tmp = default;
             }
         }
     }

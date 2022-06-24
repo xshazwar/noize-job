@@ -53,5 +53,8 @@ namespace xshazwar.noize.mesh {
         public override void OnStageComplete(){
             Mesh.ApplyAndDisposeWritableMeshData(meshDataArray, currentMesh);
         }
+
+        public override void OnDestroy(){}
+
     }
 }
