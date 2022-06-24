@@ -6,6 +6,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 using UnityEngine.Rendering;
+using UnityEngine.Profiling;
 
 // using xshazwar.unity;
 // #if UNITY_EDITOR
@@ -51,7 +52,14 @@ namespace xshazwar.noize.mesh {
 			jobHandle = jobs[(int)meshType](currentMesh, meshData, d.resolution, d.inputResolution, d.marginPix, d.tileHeight, d.tileSize, d.data, dep);
         }
         public override void OnStageComplete(){
-            Mesh.ApplyAndDisposeWritableMeshData(meshDataArray, currentMesh);
+            
+            UnityEngine.Profiling.Profiler.BeginSample("ApplyMeshAndDisposeMemory");
+            Mesh.ApplyAndDisposeWritableMeshData(meshDataArray, currentMesh,
+                MeshUpdateFlags.DontNotifyMeshUsers |
+                MeshUpdateFlags.DontValidateIndices |
+                MeshUpdateFlags.DontRecalculateBounds);
+            UnityEngine.Profiling.Profiler.EndSample();
+            
         }
 
         public override void OnDestroy(){}

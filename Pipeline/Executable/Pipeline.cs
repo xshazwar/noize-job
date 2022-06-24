@@ -10,6 +10,7 @@ using xshazwar.noize.editor;
 #endif
 
 using UnityEngine;
+using UnityEngine.Profiling;
 using Unity.Jobs;
 
 namespace xshazwar.noize.pipeline {
@@ -24,7 +25,7 @@ namespace xshazwar.noize.pipeline {
     }
     public abstract class BasePipeline : MonoBehaviour, IPipeline
     {
-        protected bool pipelineQueued;
+        protected bool pipelineBeingScheduled;
         protected bool pipelineRunning;
 
         #if UNITY_EDITOR
@@ -49,7 +50,7 @@ namespace xshazwar.noize.pipeline {
         public void Start(){
             BeforeStart();
             queue = new ConcurrentQueue<PipelineWorkItem>();
-            pipelineQueued = false;
+            pipelineBeingScheduled = false;
             pipelineRunning = false;
             // don't bother with update until it's been scheduled the first time
             // enabled = false;
@@ -100,21 +101,21 @@ namespace xshazwar.noize.pipeline {
                 throw new Exception("No stages in pipeline");
             }
             enabled = true;
+            pipelineBeingScheduled = true;
             #if UNITY_EDITOR
             wall = System.Diagnostics.Stopwatch.StartNew();
             #endif
-            Debug.Log($"{alias} scheduling {activeItem.data.uuid}");
+            Debug.LogWarning($"{alias} scheduling {activeItem.data.uuid}");
             stage_instances[0].ReceiveHandledInput(activeItem.data, activeItem.dependency);
             OnPipelineSchedule(activeItem.data, activeItem.completeAction);
-            pipelineQueued = true;
         }
 
         public void OnPipelineFullyScheduled(StageIO res, JobHandle handle){
             pipelineHandle = handle;
             pipelineRunning = true;
-            pipelineQueued = false;
+            pipelineBeingScheduled = false;
             activeItem.outputData = res;
-            Debug.Log($"{alias} fully scheduled {res.uuid}");
+            Debug.LogWarning($"{alias} fully scheduled {res.uuid} -> scheduling {pipelineBeingScheduled}");
             activeItem.scheduledAction?.Invoke(res, handle);
         }
 
@@ -155,26 +156,37 @@ namespace xshazwar.noize.pipeline {
         public void LateUpdate(){
             OnLateUpdate();
             if (pipelineRunning && pipelineHandle.IsCompleted){
+                UnityEngine.Profiling.Profiler.BeginSample("JobHandle.Complete()");
                 pipelineHandle.Complete();
+                UnityEngine.Profiling.Profiler.EndSample();
+                UnityEngine.Profiling.Profiler.BeginSample("CleanUp");
                 CleanUp();
-                Debug.Log($"{alias} has a complete task");
+                UnityEngine.Profiling.Profiler.EndSample();
                 #if UNITY_EDITOR
                 wall.Stop();
                 Debug.LogWarning($"{alias} -> {activeItem.outputData.uuid}: {wall.ElapsedMilliseconds}ms");
                 #endif
+                UnityEngine.Profiling.Profiler.BeginSample("InvokeCustomCallback");
                 activeItem.completeAction?.Invoke(activeItem.outputData);
+                UnityEngine.Profiling.Profiler.EndSample();
+                UnityEngine.Profiling.Profiler.BeginSample("PipelineComplete");
+                OnPipelineComplete(activeItem.outputData);
                 pipelineRunning = false;
+                UnityEngine.Profiling.Profiler.EndSample();
             }
         }
 
         public virtual void OnUpdate(){
-            if (!pipelineRunning && !pipelineQueued){
+            if (!pipelineRunning && !pipelineBeingScheduled){
                 if (queue.Count > 0){
                     PipelineWorkItem wi;
+                    Debug.Log($"{alias} servicing 1 of {queue.Count} objects in queue");
                     if (queue.TryDequeue(out wi)){
                         Schedule(wi);
                     }
                 }
+            }else if (!pipelineRunning && queue.Count > 0){
+                Debug.Log($"{alias} has life of {queue.Count} objects in queue for {pipelineBeingScheduled}");
             }
         }
 

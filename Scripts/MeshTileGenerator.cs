@@ -80,7 +80,7 @@ namespace xshazwar.noize.scripts {
 
         public void Update(){
             OnUpdate();
-            if(!isRunning){
+            // if(!isRunning){
                 if (workQueue.Count > 0){
                     TileRequest req;
                     if (workQueue.TryDequeue(out req)){
@@ -90,7 +90,7 @@ namespace xshazwar.noize.scripts {
                         return;
                     }
                 }
-            }
+            // }
         }
 
         protected virtual void OnUpdate(){}
@@ -202,7 +202,8 @@ namespace xshazwar.noize.scripts {
             OnMeshComplete(d);   
         }
 
-        protected virtual void OnMeshComplete(MeshStageData d){}
+        protected virtual void OnMeshComplete(MeshStageData d){
+        }
     
         public void MeshBaked(string uuid){
             TileRequest req = activeTiles[uuid];

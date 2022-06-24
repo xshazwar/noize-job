@@ -32,7 +32,6 @@ namespace xshazwar.noize.scripts {
 
         public void Awake(){
             isRunning = false;
-            meshes = new NativeArray<int>(new int[] {}, Allocator.Persistent);
             workQueue = new ConcurrentQueue<MeshBakeOrder>();
             inProgress = new List<MeshBakeOrder>();
         }
@@ -72,7 +71,6 @@ namespace xshazwar.noize.scripts {
                 meshIDs.Add(o.meshID);
                 inProgress.Add(o);
             }
-            meshes.Dispose();
             meshes = new NativeArray<int>(meshIDs.ToArray(), Allocator.Persistent);
             jobHandle = job(meshes, default);
         }
@@ -82,6 +80,8 @@ namespace xshazwar.noize.scripts {
             foreach(MeshBakeOrder o in inProgress){
                 o.onCompleteBake.Invoke(o.uuid);
             }
+            meshes.Dispose();
+            meshes = default;
         }
 
     }
