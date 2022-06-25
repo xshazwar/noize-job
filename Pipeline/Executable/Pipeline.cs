@@ -44,9 +44,6 @@ namespace xshazwar.noize.pipeline {
 
         protected List<PipelineStage> stage_instances;
 
-        // public Action<StageIO> OnJobCompleteAction {get; set;}
-        // public Action<StageIO, JobHandle> OnPipelineScheduledAction {get; set;}
-
         public void Start(){
             BeforeStart();
             queue = new ConcurrentQueue<PipelineWorkItem>();
@@ -105,7 +102,6 @@ namespace xshazwar.noize.pipeline {
             #if UNITY_EDITOR
             wall = System.Diagnostics.Stopwatch.StartNew();
             #endif
-            Debug.LogWarning($"{alias} scheduling {activeItem.data.uuid}");
             stage_instances[0].ReceiveHandledInput(activeItem.data, activeItem.dependency);
             OnPipelineSchedule(activeItem.data, activeItem.completeAction);
         }
@@ -115,7 +111,7 @@ namespace xshazwar.noize.pipeline {
             pipelineRunning = true;
             pipelineBeingScheduled = false;
             activeItem.outputData = res;
-            Debug.LogWarning($"{alias} fully scheduled {res.uuid} -> scheduling {pipelineBeingScheduled}");
+            Debug.LogWarning($"{alias} fully scheduled {res.uuid} in ({wall.ElapsedMilliseconds}ms)");
             activeItem.scheduledAction?.Invoke(res, handle);
         }
 
@@ -143,7 +139,7 @@ namespace xshazwar.noize.pipeline {
                 previousStage = stage;
             }
             stage_instances[stages.Count - 1].OnStageScheduledAction += OnPipelineFullyScheduled;
-            Debug.Log("Pipeline Setup Complete");
+            Debug.Log($"Pipeline {alias} : Setup Complete");
         }
 
 
@@ -164,7 +160,7 @@ namespace xshazwar.noize.pipeline {
                 UnityEngine.Profiling.Profiler.EndSample();
                 #if UNITY_EDITOR
                 wall.Stop();
-                Debug.LogWarning($"{alias} -> {activeItem.outputData.uuid}: {wall.ElapsedMilliseconds}ms");
+                Debug.LogWarning($"{alias} completed -> {activeItem.outputData.uuid}: {wall.ElapsedMilliseconds}ms");
                 #endif
                 UnityEngine.Profiling.Profiler.BeginSample("InvokeCustomCallback");
                 activeItem.completeAction?.Invoke(activeItem.outputData);
@@ -180,8 +176,8 @@ namespace xshazwar.noize.pipeline {
             if (!pipelineRunning && !pipelineBeingScheduled){
                 if (queue.Count > 0){
                     PipelineWorkItem wi;
-                    Debug.Log($"{alias} servicing 1 of {queue.Count} objects in queue");
                     if (queue.TryDequeue(out wi)){
+                        Debug.LogWarning($"{alias} servicing {wi.data.uuid} | {queue.Count} remaining");
                         Schedule(wi);
                     }
                 }

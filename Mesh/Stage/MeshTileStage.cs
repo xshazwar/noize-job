@@ -1,12 +1,10 @@
 using System;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.Profiling;
 
 using Unity.Collections;
 using Unity.Jobs;
-
-using UnityEngine.Rendering;
-using UnityEngine.Profiling;
 
 // using xshazwar.unity;
 // #if UNITY_EDITOR

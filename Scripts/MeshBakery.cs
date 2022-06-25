@@ -25,10 +25,14 @@ namespace xshazwar.noize.scripts {
         private ConcurrentQueue<MeshBakeOrder> workQueue;
         private List<MeshBakeOrder> inProgress;
         static BakeManyJobDelegate job = BakeManyJob.ScheduleParallel;
+        
+        public int maxBatch = 2;
         private NativeArray<int> meshes;
         private bool isRunning;
-
         private JobHandle jobHandle;
+    #if UNITY_EDITOR
+        protected System.Diagnostics.Stopwatch wall;
+    #endif
 
         public void Awake(){
             isRunning = false;
@@ -67,21 +71,33 @@ namespace xshazwar.noize.scripts {
             MeshBakeOrder o;
             List<int> meshIDs = new List<int>();
             inProgress = new List<MeshBakeOrder>();
+            int batchCount = maxBatch;
             while(workQueue.TryDequeue(out o)){
                 meshIDs.Add(o.meshID);
                 inProgress.Add(o);
+                batchCount -= 1;
+                if (batchCount <= 0){
+                    break;
+                }
             }
             meshes = new NativeArray<int>(meshIDs.ToArray(), Allocator.Persistent);
+            #if UNITY_EDITOR
+                wall = System.Diagnostics.Stopwatch.StartNew();
+                Debug.LogWarning($"Mesh batch of size {inProgress.Count} starting");
+            #endif
             jobHandle = job(meshes, default);
         }
 
         public void JobFinished(){
-            Debug.Log($"Mesh batch of size {inProgress.Count} complete");
             foreach(MeshBakeOrder o in inProgress){
                 o.onCompleteBake.Invoke(o.uuid);
             }
             meshes.Dispose();
             meshes = default;
+            #if UNITY_EDITOR
+                wall.Stop();
+                Debug.LogWarning($"Mesh batch of size {inProgress.Count} complete in {wall.ElapsedMilliseconds}ms");
+            #endif
         }
 
     }

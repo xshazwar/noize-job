@@ -80,7 +80,7 @@ namespace xshazwar.noize.scripts {
 
         public void Update(){
             OnUpdate();
-            // if(!isRunning){
+            if(!isRunning){
                 if (workQueue.Count > 0){
                     TileRequest req;
                     if (workQueue.TryDequeue(out req)){
@@ -90,7 +90,7 @@ namespace xshazwar.noize.scripts {
                         return;
                     }
                 }
-            // }
+            }
         }
 
         protected virtual void OnUpdate(){}
@@ -136,7 +136,7 @@ namespace xshazwar.noize.scripts {
 
         protected virtual void RequestTileData(TileRequest req){
             OnRequestTileData(req);
-            Debug.Log($"requesting data for {req.uuid}");
+            Debug.Log($"requesting data for {req.uuid} ({req.pos.x}, {req.pos.y})");
             dataSource.Enqueue(
                 new GeneratorData {
                     uuid = req.uuid,
