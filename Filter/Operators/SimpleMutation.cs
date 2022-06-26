@@ -33,6 +33,26 @@ namespace xshazwar.noize.filter {
         }
     }
 
+    public struct ConstantBinarize: IConstantTiles {
+        public float ConstantValue {get; set;}
+        public int JobLength {get; set;}
+        public int Resolution {get; set;}
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DoOp<T>(int x, int z, T tileA)
+                where T : struct, IRWTile {
+            float val = tileA.GetData(x, z) >= ConstantValue ? 1 : 0;
+            tileA.SetValue(x, z, val);
+        }
+
+        public void Execute<T>(int z, T tileA)
+                where  T : struct, IRWTile {
+            for( int x = 0; x < Resolution; x++){
+                DoOp<T>(x, z, tileA);
+            }
+        }
+    }
+
     public struct SubtractTiles: IReduceTiles{
         public int JobLength {get; set;}
         public int Resolution {get; set;}

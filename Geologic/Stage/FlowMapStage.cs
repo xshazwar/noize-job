@@ -15,7 +15,7 @@ namespace xshazwar.noize.geologic {
     [CreateAssetMenu(fileName = "FlowMapStage", menuName = "Noize/Geologic/FlowMap", order = 2)]
     public class FlowMapStage: PipelineStage {
 
-        [Range(1, 32)]
+        [Range(1, 128)]
         public int iterations = 5;
         private int resolution = 0;
 
