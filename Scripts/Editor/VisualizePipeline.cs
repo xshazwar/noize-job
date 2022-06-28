@@ -78,7 +78,8 @@ namespace xshazwar.noize.scripts.editor {
             foreach(BasePipeline p in mPipeline.GetDependencies()){
                 if(p != null){
                     Debug.Log($"destroying {p.alias}");
-                    p.OnDestroy();
+                    p.OnDisable();
+                    // p.OnDestroy();
                 }
             }
         }
@@ -183,8 +184,9 @@ namespace xshazwar.noize.scripts.editor {
                 if( mPipeline != null){
                     Debug.Log($"Setting up {mPipeline.alias}");
                     foreach(BasePipeline pl in mPipeline.GetDependencies()){
-                        if (pl != null && pl.stages.Count > 0){
-                            pl.Start();
+                        if (pl != null && pl.pipes.Count > 0){
+                            // pl.Start();
+                            pl.OnEnable();
                         }else{
                             Debug.LogError("No stages in pipeline");
                         }
@@ -219,10 +221,12 @@ namespace xshazwar.noize.scripts.editor {
                 
                 if (isRunning == false && mPipeline != null){
                     foreach(BasePipeline pl in mPipeline.GetDependencies()){
-                        if (pl != null && pl.stages.Count > 0){
+                        if (pl != null && pl.pipes.Count > 0){
                             Debug.Log($"restarting {pl.alias}");
-                            pl.OnDestroy();
-                            pl.Start();
+                            pl.OnDisable();
+                            // pl.OnDestroy();
+                            // pl.Start();
+                            pl.OnEnable();
                         }else{
                             Debug.LogError("No stages in pipeline");
                         }

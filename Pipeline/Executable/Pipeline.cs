@@ -30,8 +30,6 @@ namespace xshazwar.noize.pipeline {
 
         #if UNITY_EDITOR
             protected System.Diagnostics.Stopwatch wall;
-            public List<bool> stageActive;
-
         #endif
         public string alias = "Unnamed Pipeline";
 
@@ -40,13 +38,12 @@ namespace xshazwar.noize.pipeline {
         
         protected JobHandle pipelineHandle;
         
-        // This is a list of stages, but references the type and must be instantiated
         [SerializeField]
-        public List<PipelineStage> stages;
+        public List<MaskedPipeline> pipes;
 
         protected List<PipelineStage> stage_instances;
 
-        public void Start(){
+        public void OnEnable(){
             BeforeStart();
             queue = new ConcurrentQueue<PipelineWorkItem>();
             pipelineBeingScheduled = false;
@@ -61,22 +58,13 @@ namespace xshazwar.noize.pipeline {
             return new BasePipeline[]{ this };
         }
 
-        void SetupDefaultActiveStages(){
-        #if UNITY_EDITOR
-            if(stageActive == null || stageActive.Count != stages.Count){
-                stageActive = new List<bool>();
-                for (int i = 0; i < stages.Count; i++){
-                    stageActive.Add(true);
-                }
-            }
-        #endif
-        }
-
         void OnValidate(){
             this.name = $"Pipeline:{alias}";
-        #if UNITY_EDITOR
-            SetupDefaultActiveStages();
-        #endif
+            if (pipes != null){
+                foreach( MaskedPipeline mpl in pipes){
+                    mpl.Validate();
+                }
+            }
         }
 
         public void Enqueue(
@@ -110,7 +98,7 @@ namespace xshazwar.noize.pipeline {
         }
 
         public void Schedule(){
-            if (stages == null){
+            if (pipes == null){
                 throw new Exception("No stages in pipeline");
             }
             enabled = true;
@@ -131,33 +119,16 @@ namespace xshazwar.noize.pipeline {
             activeItem.scheduledAction?.Invoke(res, handle);
         }
 
-        // public void OnFinalStageComplete(StageIO res){
-        //     #if UNITY_EDITOR
-        //     wall.Stop();
-        //     Debug.LogWarning($"{alias} -> {res.uuid}: {wall.ElapsedMilliseconds}ms");
-        //     #endif
-        //     pipelineRunning = false;
-        //     pipelineOutput = res;
-        //     OnJobCompleteAction?.Invoke(pipelineOutput);
-        //     OnJobCompleteAction = null;
-        //     OnPipelineComplete(res);
-        // }
         public void Setup(){
             stage_instances = new List<PipelineStage>();
-            for (int i = 0; i < stages.Count; i++){
-                #if UNITY_EDITOR
-                SetupDefaultActiveStages();
-                if(stageActive[i] == true){
-                    stage_instances.Add(UnityEngine.Object.Instantiate(stages[i]));
-                }
-                #else
-                stage_instances.Add(UnityEngine.Object.Instantiate(stages[i]));
-                #endif
-                
+            if (pipes == null){
+                return;
             }
-            // foreach(PipelineStage stage in stages){
-            //     stage_instances.Add(UnityEngine.Object.Instantiate(stage));
-            // }
+            foreach (MaskedPipeline mpl in pipes){
+                foreach(PipelineStage stage in mpl.GetStages()){
+                    stage_instances.Add(stage);
+                }
+            }
             PipelineStage previousStage = null;
             foreach(PipelineStage stage in stage_instances){
                 if(previousStage != null){
@@ -165,8 +136,10 @@ namespace xshazwar.noize.pipeline {
                 }
                 previousStage = stage;
             }
-            stage_instances[stage_instances.Count - 1].OnStageScheduledAction += OnPipelineFullyScheduled;
-            Debug.Log($"Pipeline {alias} : Setup Complete");
+            if (stage_instances.Count > 0){
+                stage_instances[stage_instances.Count - 1].OnStageScheduledAction += OnPipelineFullyScheduled;
+            }
+            Debug.LogWarning($"Pipeline {alias} : Setup Complete -> {stage_instances.Count}");
         }
 
 
@@ -237,7 +210,11 @@ namespace xshazwar.noize.pipeline {
             }
         }
 
-        public virtual void OnDestroy()
+        public void OnDisable(){
+            Destroy();
+        }
+
+        public virtual void Destroy()
         {
             DestroyStages();
         }
