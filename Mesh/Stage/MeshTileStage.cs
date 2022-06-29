@@ -42,13 +42,22 @@ namespace xshazwar.noize.mesh {
         void Awake(){
         }
 
-        public override void Schedule( StageIO req, JobHandle dep ){
-            MeshStageData d = (MeshStageData) req;
+        // public override void Schedule( StageIO req, JobHandle dep ){
+        //     MeshStageData d = (MeshStageData) req;
+        //     currentMesh = d.mesh;
+        //     meshDataArray = Mesh.AllocateWritableMeshData(1);
+		// 	meshData = meshDataArray[0];
+		// 	jobHandle = jobs[(int)meshType](currentMesh, meshData, d.resolution, d.inputResolution, d.marginPix, d.tileHeight, d.tileSize, d.data, dep);
+        // }
+
+        public override void Schedule(PipelineWorkItem requirements, JobHandle dependency){
+            MeshStageData d = (MeshStageData) requirements.data;
             currentMesh = d.mesh;
             meshDataArray = Mesh.AllocateWritableMeshData(1);
 			meshData = meshDataArray[0];
-			jobHandle = jobs[(int)meshType](currentMesh, meshData, d.resolution, d.inputResolution, d.marginPix, d.tileHeight, d.tileSize, d.data, dep);
+			jobHandle = jobs[(int)meshType](currentMesh, meshData, d.resolution, d.inputResolution, d.marginPix, d.tileHeight, d.tileSize, d.data, dependency);
         }
+
         public override void OnStageComplete(){
             
             UnityEngine.Profiling.Profiler.BeginSample("ApplyMeshAndDisposeMemory");

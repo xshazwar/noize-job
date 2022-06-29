@@ -17,6 +17,12 @@ namespace xshazwar.noize.pipeline {
 
     [System.Serializable] 
     public class MaskedPipeline {
+        
+        [SerializeField]
+        public List<string> ReadBuffers;
+        [SerializeField]
+        public List<string> WriteBuffers;
+        
         [SerializeField]
         public StageMask mask;
         [SerializeField]
@@ -36,6 +42,12 @@ namespace xshazwar.noize.pipeline {
             return pipeline.GetStages(mask);
         }
 
+        public List<string> GetRequiredReadBuffers(){
+            return null;
+        }
+        public List<string> GetRequiredWriteBuffers(){
+            return null;
+        }
     }
     
     [System.Serializable] 
@@ -71,16 +83,22 @@ namespace xshazwar.noize.pipeline {
         [SerializeField]
         public List<PipelineStage> stages;
 
-        public List<PipelineStage> GetStages(StageMask mask = null){
-            List<PipelineStage> res = new List<PipelineStage>();
+        public IEnumerable<PipelineStage> GetMaskedStages(StageMask mask = null){
             for (int i = 0; i < stages.Count; i++){
                 if (mask != null && mask.maskSize > i){
                     if (mask.activity[i] == true){
-                        res.Add(UnityEngine.Object.Instantiate(stages[i]));
+                        yield return stages[i];
                     }
                 }else{
-                    res.Add(UnityEngine.Object.Instantiate(stages[i]));
+                    yield return stages[i];
                 }
+            }
+        }
+
+        public List<PipelineStage> GetStages(StageMask mask = null){
+            List<PipelineStage> res = new List<PipelineStage>();
+            foreach(PipelineStage stage in GetMaskedStages(mask)){
+                res.Add(UnityEngine.Object.Instantiate(stage));
             }
             return res;
         }

@@ -15,7 +15,6 @@ namespace xshazwar.noize.filter {
         public AnimationCurve unityCurve;
         private NativeArray<float> curve;
         public int samples = 256;
-        private int dataLength = 0;
         private NativeArray<float> tmp;
 
         void Awake(){
@@ -34,20 +33,24 @@ namespace xshazwar.noize.filter {
             }
         }
 
-        public override void Schedule( StageIO req, JobHandle dep ){
-            GeneratorData d = (GeneratorData) req;
-            if(d.data.Length != dataLength){
-                dataLength = d.data.Length;
-                if(!tmp.IsCreated){
-                    tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-                }
+        public override void ResizeNativeContainers(int size){
+            // Resize containers
+            dataLength = size;
+            if(tmp.IsCreated){
+                tmp.Dispose();
             }
+            tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        }
+
+        public override void Schedule(PipelineWorkItem requirements, JobHandle dependency ){
+            CheckRequirements<GeneratorData>(requirements);
+            GeneratorData d = (GeneratorData) requirements.data;
             jobHandle = job(
                 d.data,
                 tmp,
                 new NativeSlice<float>(curve),
                 d.resolution,
-                dep
+                dependency
             );
         }
 

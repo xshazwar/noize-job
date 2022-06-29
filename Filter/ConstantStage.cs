@@ -25,32 +25,26 @@ namespace xshazwar.noize.filter {
         public ConstantOperationType operation;
         [Range(0, 1)]
         public float value = 0.5f;
-        private int dataLength = 0;
         private NativeArray<float> tmp;
-        public override void Schedule( StageIO req, JobHandle dep){
-            if (req is GeneratorData){
-                GeneratorData d = (GeneratorData) req;
-                // This could take a while, so we'll use Persistent. May want to logic this a bit
-                if(d.data.Length != dataLength){
-                    dataLength = d.data.Length;
-                    if(tmp.IsCreated){
-                        tmp.Dispose();
-                    }
-                    tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-                    dataLength = d.data.Length;
-                }
-                jobHandle = jobs[(int)operation](
-                    d.data,
-                    tmp,
-                    value,
-                    d.resolution,
-                    dep
-                );
+        public override void ResizeNativeContainers(int size){
+            // Resize containers
+            dataLength = size;
+            if(tmp.IsCreated){
+                tmp.Dispose();
             }
-            else{
-                throw new Exception($"Unhandled stageio {req.GetType().ToString()}");
-            }
-            Debug.Log("scheduled");
+            tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        }
+
+        public override void Schedule(PipelineWorkItem requirements, JobHandle dependency ){
+            CheckRequirements<GeneratorData>(requirements);
+            GeneratorData d = (GeneratorData) requirements.data;
+            jobHandle = jobs[(int)operation](
+                d.data,
+                tmp,
+                value,
+                d.resolution,
+                dependency
+            );
         }
 
         public override void OnDestroy()

@@ -9,7 +9,7 @@ namespace xshazwar.noize.pipeline {
     public interface IStage : IScheduleStage, IStageBroadcaster, IJobTarget {}
 
     public interface IScheduleStage {
-        public void Schedule(StageIO requirements, JobHandle dependency);
+        public void Schedule(PipelineWorkItem requirements, JobHandle dependency);
         // public void OnUpdate();
     }
 
@@ -30,15 +30,11 @@ namespace xshazwar.noize.pipeline {
     }
 
     public interface IJobTarget {
-        public void ReceiveHandledInput(StageIO inputData, JobHandle dependency);
+        public void ReceiveHandledInput(PipelineWorkItem inputData, JobHandle dependency);
     }
-
-    // public interface IJobBroadcaster{
-    //     public Action<StageIO>OnJobCompleteAction {get; set;}
-    // }
 
     public interface IStageBroadcaster{
         // public Action<StageIO>OnStageCompleteAction {get; set;}
-        public Action<StageIO, JobHandle>OnStageScheduledAction {get; set;}
+        public Action<PipelineWorkItem, JobHandle>OnStageScheduledAction {get; set;}
     }
 }

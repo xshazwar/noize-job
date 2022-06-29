@@ -30,7 +30,6 @@ namespace xshazwar.noize.geologic {
 
         private const int READ = 0;
         private const int WRITE = 1;
-        bool arraysInitialized = false;
         bool arraysReady;
         NativeArray<float> tmp;
         NativeArray<float> normArgs;
@@ -193,18 +192,18 @@ namespace xshazwar.noize.geologic {
             );
         }
 
-        public override void Schedule( StageIO req, JobHandle dep ){
-            GeneratorData d = (GeneratorData) req;
-            if (!arraysInitialized){
-                Awake();
-            }
-            if (d.resolution != resolution){
-                Debug.Log("New resolution requires creation of all buffers, expect alloc");
-                resolution = d.resolution;
-                DisposeArrays();
-                InitArrays(resolution * resolution);
-            }
-            ScheduleAll(d.data, dep);
+        public override void ResizeNativeContainers(int size){
+            // Resize containers
+            dataLength = size;
+            Awake();
+            DisposeArrays();
+            InitArrays(size);
+        }
+
+        public override void Schedule(PipelineWorkItem requirements, JobHandle dependency ){
+            CheckRequirements<GeneratorData>(requirements);
+            GeneratorData d = (GeneratorData) requirements.data;
+            ScheduleAll(d.data, dependency);
         }
         
         public override void OnDestroy(){

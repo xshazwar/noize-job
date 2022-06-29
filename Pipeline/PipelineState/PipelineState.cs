@@ -16,6 +16,7 @@ namespace xshazwar.noize.pipeline {
         int warmPoolMax;
         int bufferSize;
 
+        // bufferName -> {guid-of-work}.{buffer-alias}
         private Dictionary<string, NativeArray<T>> buffers;
         private Queue<NativeArray<T>> pool;
 
@@ -36,6 +37,10 @@ namespace xshazwar.noize.pipeline {
                 buffers[key] = pool.Dequeue();
             }
             return buffers[key];
+        }
+
+        public bool BufferExists(string key){
+            return buffers.ContainsKey(key);
         }
 
         public void ReleaseBuffer(string key){

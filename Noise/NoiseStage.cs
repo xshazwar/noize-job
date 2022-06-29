@@ -48,10 +48,11 @@ namespace xshazwar.noize.generate {
 
         [Range(5, 32000)]
         public int noiseSize = 1000;
-        public override void Schedule( StageIO req, JobHandle dep ){
-            GeneratorData d = (GeneratorData) req;
+        public override void Schedule(PipelineWorkItem requirements, JobHandle dependency ){
+            CheckRequirements<GeneratorData>(requirements);
+            GeneratorData d = (GeneratorData) requirements.data;
             jobHandle = jobs[(int)noiseType](
-                d.data, d.resolution, hurst, startingAmplitude, stepdown, detuneRate, octaves, d.xpos, d.zpos, noiseSize, dep);
+                d.data, d.resolution, hurst, startingAmplitude, stepdown, detuneRate, octaves, d.xpos, d.zpos, noiseSize, dependency);
         }
     }
 }

@@ -12,16 +12,19 @@ using xshazwar.noize.editor;
 using UnityEngine;
 using UnityEngine.Profiling;
 using Unity.Jobs;
+using Unity.Collections;
 
 namespace xshazwar.noize.pipeline {
 
     public class PipelineWorkItem {
         // Used for internal handling of work queues in pipelines
         public StageIO data;
-        public StageIO outputData;
+        // public StageIO outputData;
         public Action<StageIO> completeAction;
         public Action<StageIO, JobHandle> scheduledAction;
         public JobHandle dependency;
+        private Dictionary<string, NativeSlice<float>> sharedContext;
+
     }
     public abstract class BasePipeline : MonoBehaviour, IPipeline
     {
@@ -33,7 +36,10 @@ namespace xshazwar.noize.pipeline {
         #endif
         public string alias = "Unnamed Pipeline";
 
+        // This is only concurrent for puts, all gets are from the main thread
         protected ConcurrentQueue<PipelineWorkItem> queue;
+        // If the top of the queue has unmet deps, then we stick it here to be processed first
+        protected List<PipelineWorkItem> dependencyHell;
         protected PipelineWorkItem activeItem;
         
         protected JobHandle pipelineHandle;
@@ -42,6 +48,10 @@ namespace xshazwar.noize.pipeline {
         public List<MaskedPipeline> pipes;
 
         protected List<PipelineStage> stage_instances;
+
+        // List of buffer aliases that this pipeline expects to read, from the pipeline definition
+        protected List<string> contextRequirements;
+        protected PipelineStateManager contextManager;
 
         public void OnEnable(){
             BeforeStart();
@@ -106,17 +116,17 @@ namespace xshazwar.noize.pipeline {
             #if UNITY_EDITOR
             wall = System.Diagnostics.Stopwatch.StartNew();
             #endif
-            stage_instances[0].ReceiveHandledInput(activeItem.data, activeItem.dependency);
+            stage_instances[0].ReceiveHandledInput(activeItem, activeItem.dependency);
             OnPipelineSchedule(activeItem.data, activeItem.completeAction);
         }
 
-        public void OnPipelineFullyScheduled(StageIO res, JobHandle handle){
+        public void OnPipelineFullyScheduled(PipelineWorkItem res, JobHandle handle){
             pipelineHandle = handle;
             pipelineRunning = true;
             pipelineBeingScheduled = false;
-            activeItem.outputData = res;
-            Debug.LogWarning($"{alias} fully scheduled {res.uuid} in ({wall.ElapsedMilliseconds}ms)");
-            activeItem.scheduledAction?.Invoke(res, handle);
+            // activeItem.outputData = res.data;
+            Debug.LogWarning($"{alias} fully scheduled {res.data.uuid} in ({wall.ElapsedMilliseconds}ms)");
+            activeItem.scheduledAction?.Invoke(res.data, handle);
         }
 
         public void Setup(){
@@ -160,13 +170,13 @@ namespace xshazwar.noize.pipeline {
                 UnityEngine.Profiling.Profiler.EndSample();
                 #if UNITY_EDITOR
                 wall.Stop();
-                Debug.LogWarning($"{alias} completed -> {activeItem.outputData.uuid}: {wall.ElapsedMilliseconds}ms");
+                Debug.LogWarning($"{alias} completed -> {activeItem.data.uuid}: {wall.ElapsedMilliseconds}ms");
                 #endif
                 UnityEngine.Profiling.Profiler.BeginSample("InvokeCustomCallback");
-                activeItem.completeAction?.Invoke(activeItem.outputData);
+                activeItem.completeAction?.Invoke(activeItem.data);
                 UnityEngine.Profiling.Profiler.EndSample();
                 UnityEngine.Profiling.Profiler.BeginSample("PipelineComplete");
-                OnPipelineComplete(activeItem.outputData);
+                OnPipelineComplete(activeItem.data);
                 pipelineRunning = false;
                 UnityEngine.Profiling.Profiler.EndSample();
             }
@@ -208,6 +218,10 @@ namespace xshazwar.noize.pipeline {
                     Debug.LogError(err);
                 }
             }
+        }
+
+        public bool TryHydrateSharedContext(PipelineWorkItem item){
+            return true;
         }
 
         public void OnDisable(){

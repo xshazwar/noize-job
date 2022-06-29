@@ -7,8 +7,6 @@ namespace xshazwar.noize.pipeline {
 
     [System.Serializable]
     public class MeshStageData : StageIO {
-
-        [Range(8, 4096)]
         // square output of the mesh (cut from the middle of the source data)
         public int resolution = 512;
         // square resolution of the source data
@@ -18,11 +16,5 @@ namespace xshazwar.noize.pipeline {
         public float tileSize = 512f;
         public float tileHeight = 512f;
         public Mesh mesh;
-        public NativeSlice<float> data;
-
-        public override void ImposeOn(ref StageIO d){
-            MeshStageData data = (MeshStageData) d;
-            data.resolution = resolution;
-        }
     }
 }
