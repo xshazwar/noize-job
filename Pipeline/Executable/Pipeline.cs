@@ -19,7 +19,6 @@ namespace xshazwar.noize.pipeline {
     public class PipelineWorkItem {
         // Used for internal handling of work queues in pipelines
         public StageIO data;
-        // public StageIO outputData;
         public Action<StageIO> completeAction;
         public Action<StageIO, JobHandle> scheduledAction;
         public JobHandle dependency;
@@ -124,7 +123,6 @@ namespace xshazwar.noize.pipeline {
             pipelineHandle = handle;
             pipelineRunning = true;
             pipelineBeingScheduled = false;
-            // activeItem.outputData = res.data;
             Debug.LogWarning($"{alias} fully scheduled {res.data.uuid} in ({wall.ElapsedMilliseconds}ms)");
             activeItem.scheduledAction?.Invoke(res.data, handle);
         }
