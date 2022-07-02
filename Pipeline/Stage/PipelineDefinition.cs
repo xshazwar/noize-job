@@ -12,8 +12,17 @@ using xshazwar.noize.editor;
 using UnityEngine;
 using UnityEngine.Profiling;
 using Unity.Jobs;
+using Unity.Collections;
 
 namespace xshazwar.noize.pipeline {
+    public class PipelineWorkItem {
+        // Used for internal handling of work queues in pipelines
+        public StageIO data;
+        public Action<StageIO> completeAction;
+        public Action<StageIO, JobHandle> scheduledAction;
+        public JobHandle dependency;
+        public Dictionary<string, NativeSlice<float>> sharedContext;
+    }
 
     [System.Serializable] 
     public class MaskedPipeline {
@@ -97,6 +106,7 @@ namespace xshazwar.noize.pipeline {
 
         public List<PipelineStage> GetStages(StageMask mask = null){
             List<PipelineStage> res = new List<PipelineStage>();
+            Debug.LogWarning($"{this.ToString()} is creating new stage instances");
             foreach(PipelineStage stage in GetMaskedStages(mask)){
                 res.Add(UnityEngine.Object.Instantiate(stage));
             }

@@ -71,6 +71,11 @@ namespace xshazwar.noize.filter {
         }
     }
 
+    public enum KernelPassDirection {
+        X,
+        Z
+    }
+    
     public enum KernelFilterType {
         Gauss9_S1,
         Gauss7_S1,
@@ -132,7 +137,7 @@ namespace xshazwar.noize.filter {
 
         
         // Jobs that can operate on the previous steps output
-        private static JobHandle ScheduleSeries<XO, ZO>(
+        public static JobHandle ScheduleSeries<XO, ZO>(
             NativeSlice<float> src,
             NativeSlice<float> tmp,
             int resolution,
@@ -156,40 +161,7 @@ namespace xshazwar.noize.filter {
             return res;
         }
 
-
-        // // Jobs that can operate in parallel and require reduction
-        // private static JobHandle SchedulePL<T>(
-        //     NativeSlice<float> src,
-        //     int resolution,
-        //     int kernelSize,
-        //     NativeArray<float> kernelX,
-        //     NativeArray<float> kernelZ,
-        //     float kernelFactor,
-        //     JobHandle dependency
-        // ) where T: struct, IReduceTiles {
-        //     NativeArray<float> original = new NativeArray<float>(src.Length, Allocator.TempJob);
-        //     NativeArray<float> tmp0 = new NativeArray<float>(src.Length, Allocator.TempJob);
-        //     NativeArray<float> tmp1 = new NativeArray<float>(src.Length, Allocator.TempJob);
-            
-        //     NativeSlice<float> originalS = new NativeSlice<float>(original);
-        //     NativeSlice<float> tmp0s = new NativeSlice<float>(tmp0);
-        //     NativeSlice<float> tmp1s = new NativeSlice<float>(tmp1);
-
-        //     originalS.CopyFrom(src);
-        //     JobHandle xPass = GenericKernelJob<KernelTileMutation<KernelSampleXOperator>, RWTileData>.ScheduleParallel(
-        //         src, tmp0s, resolution, kernelSize, kernelX, kernelFactor, dependency
-        //     );
-        //     JobHandle zPass = GenericKernelJob<KernelTileMutation<KernelSampleZOperator>, RWTileData>.ScheduleParallel(
-        //         originalS, tmp1s, resolution, kernelSize, kernelZ, kernelFactor, dependency
-        //     );
-        //     JobHandle allPass = JobHandle.CombineDependencies(xPass, zPass);
-        //     JobHandle reduce = ReductionJob<T, RWTileData, ReadTileData>.ScheduleParallel(
-        //         src, originalS, resolution, allPass
-        //     );
-        //     return tmp1.Dispose(tmp0.Dispose(original.Dispose(reduce)));
-        // }
-
-        private static JobHandle ScheduleReduce<RE, XO, ZO>(
+        public static JobHandle ScheduleReduce<RE, XO, ZO>(
             NativeSlice<float> src,
             NativeSlice<float> tmp,
             float[] AX,
@@ -230,7 +202,6 @@ namespace xshazwar.noize.filter {
             switch(filter){
                 case KernelFilterType.Sobel3_2D:
                     return ScheduleReduce<RootSumSquaresTiles, KernelSampleXOperator, KernelSampleZOperator>(src, tmp, sobel3_HX, sobel3_HZ, sobel3_VX, sobel3_VZ, resolution, dependency);
-                    // return ScheduleSobel2D(src, tmp, resolution, dependency);
                 case KernelFilterType.Smooth3:
                     break;
                 case KernelFilterType.Gauss9_S1:

@@ -10,6 +10,11 @@ using Unity.Jobs;
 
 namespace xshazwar.noize.pipeline {
 
+    public enum PipelineBufferOperation {
+        READ,
+        WRITE
+    }
+    
     public class PipelineState<T> where T : struct { 
 
         int warmPoolMin;

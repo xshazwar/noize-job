@@ -9,13 +9,13 @@ using xshazwar.noize.pipeline;
 
 namespace xshazwar.noize.filter {
 
-    [CreateAssetMenu(fileName = "WriteContext", menuName = "Noize/State/WriteContext", order = 2)]
-    public class WriteContext: PipelineStage, IModifyPipelineBufferContext {
+    [CreateAssetMenu(fileName = "ReadContext", menuName = "Noize/State/ReadContext", order = 2)]
+    public class ReadContext: PipelineStage, IModifyPipelineBufferContext {
 
         static FlushWriteSliceDelegate job = FlushWriteSlice.Schedule;
         public int bufferIndex {get; set;}
         private string contextAlias;
-        public PipelineBufferOperation bufferOperation {get { return PipelineBufferOperation.WRITE;}}
+        public PipelineBufferOperation bufferOperation {get { return PipelineBufferOperation.READ;}}
         public void SetBufferContext(string alias){
             contextAlias = alias;
         }
@@ -23,8 +23,8 @@ namespace xshazwar.noize.filter {
             CheckRequirements<GeneratorData>(requirements);
             NativeSlice<float> contextTarget = requirements.sharedContext[contextAlias];
             jobHandle = job(
-                requirements.data.data,
                 contextTarget,
+                requirements.data.data,
                 dependency
             );
         }

@@ -30,7 +30,7 @@ namespace xshazwar.noize.geologic {
 
         private const int READ = 0;
         private const int WRITE = 1;
-        bool arraysReady;
+        bool arraysReady = false;
         NativeArray<float> tmp;
         NativeArray<float> normArgs;
         NativeArray<float>[] waterMap;
@@ -40,6 +40,7 @@ namespace xshazwar.noize.geologic {
         NativeArray<float>[] flowMapW;
 
         void InitArrays(int size){
+            Debug.LogWarning("flow map needs init");
             if(arraysReady){
                 return;
             }
@@ -183,6 +184,7 @@ namespace xshazwar.noize.geologic {
                             new NativeSlice<float>(flowMapW[READ]),
                             resolution,
                             handles[(iterations * 2) - 1]);
+            Debug.LogWarning($"{handles.Length} handles in flow job");
             jobHandle = normStage(
                             src,
                             tmp,
@@ -194,15 +196,20 @@ namespace xshazwar.noize.geologic {
 
         public override void ResizeNativeContainers(int size){
             // Resize containers
-            dataLength = size;
-            Awake();
+            
+            if (!arraysInitialized){
+                Awake();
+            }
             DisposeArrays();
             InitArrays(size);
         }
 
         public override void Schedule(PipelineWorkItem requirements, JobHandle dependency ){
-            CheckRequirements<GeneratorData>(requirements);
             GeneratorData d = (GeneratorData) requirements.data;
+            if (resolution != d.resolution){
+                resolution = d.resolution;
+            }
+            CheckRequirements<GeneratorData>(requirements);
             ScheduleAll(d.data, dependency);
         }
         

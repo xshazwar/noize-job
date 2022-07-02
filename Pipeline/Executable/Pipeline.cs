@@ -16,15 +16,6 @@ using Unity.Collections;
 
 namespace xshazwar.noize.pipeline {
 
-    public class PipelineWorkItem {
-        // Used for internal handling of work queues in pipelines
-        public StageIO data;
-        public Action<StageIO> completeAction;
-        public Action<StageIO, JobHandle> scheduledAction;
-        public JobHandle dependency;
-        private Dictionary<string, NativeSlice<float>> sharedContext;
-
-    }
     public abstract class BasePipeline : MonoBehaviour, IPipeline
     {
         protected bool pipelineBeingScheduled;
@@ -40,7 +31,6 @@ namespace xshazwar.noize.pipeline {
         // If the top of the queue has unmet deps, then we stick it here to be processed first
         protected List<PipelineWorkItem> dependencyHell;
         protected PipelineWorkItem activeItem;
-        
         protected JobHandle pipelineHandle;
         
         [SerializeField]
@@ -49,11 +39,14 @@ namespace xshazwar.noize.pipeline {
         protected List<PipelineStage> stage_instances;
 
         // List of buffer aliases that this pipeline expects to read, from the pipeline definition
-        protected List<string> contextRequirements;
+        protected List<string> contextRequirements = null;
         protected PipelineStateManager contextManager;
+
+        public bool pipeLineReady { get; private set;}
 
         public void OnEnable(){
             BeforeStart();
+            dependencyHell = new List<PipelineWorkItem>();
             queue = new ConcurrentQueue<PipelineWorkItem>();
             pipelineBeingScheduled = false;
             pipelineRunning = false;
@@ -61,6 +54,7 @@ namespace xshazwar.noize.pipeline {
             // enabled = false;
             Setup();
             AfterStart();
+            pipeLineReady = true;
         }
 
         public virtual BasePipeline[] GetDependencies(){
@@ -180,15 +174,48 @@ namespace xshazwar.noize.pipeline {
             }
         }
 
-        public virtual void OnUpdate(){
-            if (!pipelineRunning && !pipelineBeingScheduled){
-                if (queue.Count > 0){
-                    PipelineWorkItem wi;
-                    if (queue.TryDequeue(out wi)){
-                        Debug.LogWarning($"{alias} servicing {wi.data.uuid} | {queue.Count} remaining");
-                        Schedule(wi);
+        public PipelineWorkItem? GetNextJob(){
+            // grab a snapshot of dep-hell so we can mutate it in resolveorshelve
+            PipelineWorkItem[] inHell = dependencyHell.ToArray();
+            for(int i = 0; i < inHell.Length; i++){
+                if (ResolveOrShelve(ref inHell[i])){
+                    return inHell[i];
+                }
+            }
+            if (queue.Count > 0){
+                PipelineWorkItem wi;
+                while(queue.TryDequeue(out wi)){
+                    if (ResolveOrShelve(ref wi)){
+                        return wi;
                     }
                 }
+            }
+            return null;
+        }
+
+        public bool ResolveOrShelve(ref PipelineWorkItem job){
+            if (contextRequirements == null){
+                return true;
+            }
+            if (!TryHydrateSharedContext(job)){
+                dependencyHell.Add(job);
+                return false;
+            }else{
+                return true;
+            } 
+        }
+
+        public void ServiceQueue(){         
+            PipelineWorkItem job = GetNextJob();
+            if (job != null){
+                Debug.LogWarning($"{alias} servicing {job.data.uuid} | {queue.Count} remaining");
+                Schedule(job);
+            }
+        }
+
+        public virtual void OnUpdate(){
+            if (!pipelineRunning && !pipelineBeingScheduled){
+                ServiceQueue();
             }else if (!pipelineRunning && queue.Count > 0){
                 Debug.Log($"{alias} has life of {queue.Count} objects in queue for {pipelineBeingScheduled}");
             }

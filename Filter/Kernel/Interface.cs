@@ -97,5 +97,4 @@ namespace xshazwar.noize.filter {
         void Execute<RW>(int z, RW map, NativeSlice<float> args) 
             where  RW : struct, IRWTile;
     }
-
 }

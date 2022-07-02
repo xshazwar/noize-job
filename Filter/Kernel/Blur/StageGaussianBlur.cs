@@ -7,16 +7,18 @@ using Unity.Jobs;
 
 using xshazwar.noize.pipeline;
 
-namespace xshazwar.noize.filter {
+namespace xshazwar.noize.filter.blur {
 
-    [CreateAssetMenu(fileName = "KernelFilter", menuName = "Noize/Filter/KernelFilter", order = 2)]
-    public class KernelFilterStage: PipelineStage {
+    [CreateAssetMenu(fileName = "StageGaussianBlur", menuName = "Noize/Filter/Blur/GaussianBlurFilter", order = 2)]
+    public class StageGaussianBlur: PipelineStage {
 
-        static SeperableKernelFilterDelegate job = SeparableKernelFilter.Schedule;
+        static GaussFilter.GaussFilterDelegate job = GaussFilter.Schedule;
 
-        public KernelFilterType filter;
         [Range(1, 32)]
         public int iterations = 1;
+        public GaussSigma sigma;
+        [Range(3, 25)]
+        public int width = 3;
         private NativeArray<float> tmp;
 
         public override void ResizeNativeContainers(int size){
@@ -32,11 +34,12 @@ namespace xshazwar.noize.filter {
             CheckRequirements<GeneratorData>(requirements);
             GeneratorData d = (GeneratorData) requirements.data;
             JobHandle[] handles = new JobHandle[iterations];
+            int width_ = BlurHelper.limitWidth(width);
             for (int i = 0; i < iterations; i++){
                 if (i == 0){
-                    handles[i] = job(d.data, tmp, filter, d.resolution, dependency);
+                    handles[i] = job(d.data, tmp, width_, sigma, d.resolution, dependency);
                 }else{
-                    handles[i] = job(d.data, tmp, filter, d.resolution, handles[i - 1]);
+                    handles[i] = job(d.data, tmp, width_, sigma, d.resolution, handles[i - 1]);
                 }
             }
             jobHandle = handles[iterations - 1];

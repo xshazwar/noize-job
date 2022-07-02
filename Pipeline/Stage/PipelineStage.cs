@@ -18,13 +18,13 @@ namespace xshazwar.noize.pipeline {
         }
         public virtual void ResizeNativeContainers(int size){
             // Resize containers
-            dataLength = size;
         }
         
-        public virtual void CheckRequirements<T>(PipelineWorkItem requirements) where T: StageIO{
+        public virtual void CheckRequirements<T>(PipelineWorkItem requirements) where T: StageIO {
             if (requirements.data is T){
                 T d = (T) requirements.data;
-                if (d.data.Length != dataLength){
+                if (d.data.Length != this.dataLength){
+                    this.dataLength = d.data.Length;
                     ResizeNativeContainers(d.data.Length);
                 }
             }else{

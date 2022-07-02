@@ -184,6 +184,8 @@ namespace xshazwar.noize.geologic {
         public float value;
         public void Execute(int z){
             for (int x = 0; x < resolution; x++){
+                // float last = data[(z * resolution) + x];
+                // data[(z * resolution) + x] += last + value;
                 data[(z * resolution) + x] = value;
             }  
         }

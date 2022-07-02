@@ -13,6 +13,12 @@ namespace xshazwar.noize.pipeline {
         // public void OnUpdate();
     }
 
+    public interface IModifyPipelineBufferContext{
+        public int bufferIndex {get; set;}
+        public PipelineBufferOperation bufferOperation {get;}
+        public void SetBufferContext(string alias);
+    }
+
     public interface IScheduleJobCallback{
         
         public void Enqueue(

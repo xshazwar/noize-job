@@ -35,7 +35,7 @@ namespace xshazwar.noize.filter {
 
         public override void ResizeNativeContainers(int size){
             // Resize containers
-            dataLength = size;
+            
             if(tmp.IsCreated){
                 tmp.Dispose();
             }

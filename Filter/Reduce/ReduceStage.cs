@@ -24,30 +24,9 @@ namespace xshazwar.noize.filter {
         };
         public ReductionType operation;
         private NativeArray<float> tmp;
-
-        // public override void Schedule( StageIO req, JobHandle dep ){
-        //     ReduceData d = (ReduceData) req;
-        //     if(d.data.Length != dataLength){
-        //         dataLength = d.data.Length;
-        //         if(tmp.IsCreated){
-        //             tmp.Dispose();
-        //         }
-        //         tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        //     }
-            
-        //     jobHandle = jobs[(int)operation](
-        //         d.data,
-        //         d.rightData,
-        //         tmp,
-        //         d.resolution,
-        //         dep
-        //     );
-        // }
-
-
         public override void ResizeNativeContainers(int size){
             // Resize containers
-            dataLength = size;
+            
             if(tmp.IsCreated){
                 tmp.Dispose();
             }

@@ -7,25 +7,19 @@ using Unity.Jobs;
 
 using xshazwar.noize.pipeline;
 
-namespace xshazwar.noize.filter {
+namespace xshazwar.noize.filter.blur {
 
-    [CreateAssetMenu(fileName = "Constant", menuName = "Noize/Filter/Constant", order = 2)]
-    public class ConstantStage: PipelineStage {
+    [CreateAssetMenu(fileName = "StageSmoothBlur", menuName = "Noize/Filter/Blur/SmoothBlurFilter", order = 2)]
+    public class StageSmoothBlur: PipelineStage {
 
-        public enum ConstantOperationType {
-            MULTIPLY,
-            BINARIZE
-        }
+        static SmoothFilter.SmoothFilterDelegate job = SmoothFilter.Schedule;
 
-        static ConstantJobScheduleDelegate[] jobs = new ConstantJobScheduleDelegate[] {
-            ConstantJob<ConstantMultiply, RWTileData>.ScheduleParallel,
-            ConstantJob<ConstantBinarize, RWTileData>.ScheduleParallel
-        };
-
-        public ConstantOperationType operation;
-        [Range(0, 1)]
-        public float value = 0.5f;
+        [Range(1, 32)]
+        public int iterations = 1;
+        [Range(3, 25)]
+        public int width = 1;
         private NativeArray<float> tmp;
+
         public override void ResizeNativeContainers(int size){
             // Resize containers
             
@@ -38,13 +32,16 @@ namespace xshazwar.noize.filter {
         public override void Schedule(PipelineWorkItem requirements, JobHandle dependency ){
             CheckRequirements<GeneratorData>(requirements);
             GeneratorData d = (GeneratorData) requirements.data;
-            jobHandle = jobs[(int)operation](
-                d.data,
-                tmp,
-                value,
-                d.resolution,
-                dependency
-            );
+            int width_ = BlurHelper.limitWidth(width);
+            JobHandle[] handles = new JobHandle[iterations];
+            for (int i = 0; i < iterations; i++){
+                if (i == 0){
+                    handles[i] = job(d.data, tmp, width_, d.resolution, dependency);
+                }else{
+                    handles[i] = job(d.data, tmp, width_, d.resolution, handles[i - 1]);
+                }
+            }
+            jobHandle = handles[iterations - 1];
         }
 
         public override void OnDestroy()

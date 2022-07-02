@@ -80,7 +80,7 @@ namespace xshazwar.noize.scripts {
 
         public void Update(){
             OnUpdate();
-            if(!isRunning){
+            if(!isRunning && dataSource.pipeLineReady){
                 if (workQueue.Count > 0){
                     TileRequest req;
                     if (workQueue.TryDequeue(out req)){
