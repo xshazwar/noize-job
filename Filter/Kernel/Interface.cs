@@ -70,28 +70,6 @@ namespace xshazwar.noize.filter {
     }
     public interface IMathTiles : IMutateTiles {}
 
-    public interface IComputeFlowData: ICommonTileSettings {
-        void Execute<RO, RW>(int i, RO height, RO water, RW flowN, RW flowS, RW flowE, RW flowW) 
-            where  RO : struct, IReadOnlyTile
-            where  RW : struct, IRWTile;
-    }
-
-   public interface IComputeWaterLevel: ICommonTileSettings {
-
-        void Execute<RO, RW>(int i, RW water, RO flowN, RO flowS, RO flowE, RO flowW) 
-            where  RO : struct, IReadOnlyTile
-            where  RW : struct, IRWTile;
-    }
-
-    
-
-    public interface IWriteFlowMap: ICommonTileSettings {
-
-        void Execute<RO, WO>(int z, WO height, RO flowN, RO flowS, RO flowE, RO flowW) 
-            where  RO : struct, IReadOnlyTile
-            where  WO : struct, IWriteOnlyTile;
-    }
-
     public interface INormalizeMap: ICommonTileSettings {
 
         void Execute<RW>(int z, RW map, NativeSlice<float> args) 
