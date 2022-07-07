@@ -38,11 +38,9 @@ namespace xshazwar.noize.geologic {
     // Particle Erosion
 
     public interface IPoolSuperPosition {
-        
-        NativeStream minimaStream {get; set;}
-        void CreateSuperPositions(int z);
+        void CreateSuperPositions(int z, NativeStream.Writer minimaStream);
         void CollapseMinima(int idx);
-        void Setup(NativeArray<Cardinal> flow, NativeSlice<float> heightMap, int resolution);
+        void Setup(NativeArray<Cardinal> flow_, NativeSlice<float> heightMap_, NativeSlice<float> outMap_, int resolution);
 
     }
 

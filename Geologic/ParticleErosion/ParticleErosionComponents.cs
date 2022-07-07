@@ -30,6 +30,35 @@ namespace xshazwar.noize.geologic {
         X  = 0b_00000000,
         A  = 0b_11111111
     }
+    // struct PoolPosition {
+    //     float waterHeight; // current height of pool here
+    //     float floodStart; // level at which flow stops and flooding starts
+    //     float floodEnd;  // level at which cascading starts
+    //     int minimaIndex; // where to find the minima this is linked to
+    // }
+
+    // struct Drain {
+    //     int idx; // index on heightmap
+    //     float overflowThreshold; // height at minima at which overflow starts
+    // }
+
+    // struct HeightValue {
+    //     int idx;
+    //     int height; 
+    // }
+
+    // public struct HeightValueSort: IComparer<HeightValue>{
+    //     public int Compare(HeightValue a, HeightValue b){
+    //         float diff = abs(b - a);
+    //         if (abs(diff) < .0000001){
+    //             return 0;
+    //         }
+    //         if (diff > 0){
+    //             return 1;
+    //         }
+    //         return -1;
+    //     }
+    // }
 
     struct FlowSuperPosition : IPoolSuperPosition{
         public static readonly int2[] neighbors = new int2[] {
@@ -44,9 +73,6 @@ namespace xshazwar.noize.geologic {
             new int2( 1,  0), // E
             new int2(-1,  0), // W   
         };
-        
-        public NativeStream minimaStream {get; set;}   
-        
         int2 res;
         
         [NativeDisableContainerSafetyRestriction]
@@ -55,8 +81,14 @@ namespace xshazwar.noize.geologic {
         [NativeDisableContainerSafetyRestriction]
         NativeSlice<float> heightMap;
         
+        [NativeDisableContainerSafetyRestriction]
+        NativeSlice<float> outMap;
+
         int getIdx(int x, int z){
-            return x + (res.x * z);
+            if(x >= res.x || z >= res.y || x < 0 || z < 0){
+                return -1;
+            }
+            return x * res.x + z;
         }
 
         int getIdx(int2 pos){
@@ -65,32 +97,37 @@ namespace xshazwar.noize.geologic {
 
         int2 getPos(int idx){
             int x = idx % res.x;
-            int z = (idx - x) / res.y;
+            int z = idx / res.x;
             return new int2(x, z);
         }
 
-        public void CreateSuperPositions(int z){
-            NativeStream.Writer minimaWriter = minimaStream.AsWriter();
-            minimaWriter.BeginForEachIndex(z);
+        public void CreateSuperPositions(int z, NativeStream.Writer minimaStream){
+            // NativeStream.Writer minimaStream = minimaStream.AsWriter();
+            minimaStream.BeginForEachIndex(z);
             int idxN = 0;
             float height = 0f;
             for(int x = 0; x < res.x; x++){
                 int idx = getIdx(x, z);
                 height = heightMap[idx];
+                // just for visual debug
+                outMap[idx] = height;
                 Cardinal v = Cardinal.X;
                 for(int d = 0; d < 8; d++){
                     // TODO make off the edge always show as a valid down.
                     idxN = getIdx(neighbors[d].x + x, neighbors[d].y + z);
-                    if (height > heightMap[idxN]){
+                    if(idxN < 0){
+                        v = v | (Cardinal)( ( ((byte)1) << d ) );
+                    }
+                    else if (height > heightMap[idxN]){
                         v = v | (Cardinal)( ( ((byte)1) << d ) );
                     }
                 }
                 if (v == Cardinal.X){
-                    minimaWriter.Write<int>(idx);
+                    minimaStream.Write<int>(idx);
                 }
                 flow[idx] = v;
             }
-            minimaWriter.EndForEachIndex();
+            minimaStream.EndForEachIndex();
         }
 
         bool UpdateFrontier(
@@ -107,7 +144,10 @@ namespace xshazwar.noize.geologic {
                 nKey = neighbors[d] + pos;
                 idxN = getIdx(nKey.x, nKey.y);
                 // TODO validate if off edge?
-                if (!frontier.ContainsKey(idxN) && !basin.Contains(idxN)){
+                if (idxN < 0){
+                    // off the map
+                }
+                else if (!frontier.ContainsKey(idxN) && !basin.Contains(idxN)){
                     inverseIdx = d + reciprocal;
                     Cardinal mask = flow[idxN];
                     mask = PruneMask(inverseIdx, mask, ref foundNeighbor);
@@ -127,7 +167,10 @@ namespace xshazwar.noize.geologic {
             for(int d = 0; d < 8; d++){
                 nKey = neighbors[d] + pos;
                 idxN = getIdx(nKey.x, nKey.y);
-                if (frontier.ContainsKey(idxN)){
+                if (idxN < 0){
+                    // off the map
+                }
+                else if (frontier.ContainsKey(idxN)){
                     inverseIdx = d + reciprocal;
                     // h -> n = neighbors[n] || Cardinal[n]
                     // n -> h = neighbors[n + reciprocal] || Cardinal[n + reciprocal]
@@ -190,28 +233,45 @@ namespace xshazwar.noize.geologic {
                     collapsed = CollapseFrontierState(pos, ref frontier) || collapsed;
                 }
                 basinComplete = !MoveToBasin(ref frontier, ref basin);
-            }    
+            }
+            NativeParallelHashMap<int, Cardinal>.Enumerator frontierEnumerator = frontier.GetEnumerator();
+            int drainIdx = 0;
+            int probeIdx = 0;
+            float drainHeight = float.MaxValue;
+
+            while(frontierEnumerator.MoveNext()){
+                probeIdx = frontierEnumerator.Current.Key;
+                if (heightMap[probeIdx] < drainHeight){
+                    drainHeight = heightMap[probeIdx];
+                    drainIdx = probeIdx;
+                }
+            }
+            outMap[drainIdx] = float.MaxValue;
+
+            // HeightValueSort
+            NativeParallelHashSet<int>.Enumerator basinMembers = basin.GetEnumerator();
+            while(basinMembers.MoveNext()){
+                probeIdx = basinMembers.Current;
+                if (heightMap[probeIdx] < drainHeight){
+                    outMap[probeIdx] = 0;
+                }
+            }
+
         }
 
         // public NativeArray<Cardinal> flow;
         // public NativeArray<float> heightMap {get; set;}
         // public NativeArray<float> poolMaxDepthMap {get; set;}
 
-        public void Setup(NativeArray<Cardinal> flow_, NativeSlice<float> heightMap_, int resolution){
+        public void Setup(NativeArray<Cardinal> flow_, NativeSlice<float> heightMap_, NativeSlice<float> outMap_, int resolution){
             res = new int2(resolution, resolution);
             flow = flow_;
             heightMap = heightMap_;
+            outMap = outMap_;
         }
 
 
     }
-    
-    // struct PoolPosition {
-    //     float waterHeight; // current height of pool here
-    //     ushort floodStart; // level at which flow stops and flooding starts
-    //     ushort floodEnd;  // level at which cascading starts
-    //     uint minimaIndex; // where to find the minima this is linked to
-    // }
 
     // struct Pool {
     //     public uint indexMinima;

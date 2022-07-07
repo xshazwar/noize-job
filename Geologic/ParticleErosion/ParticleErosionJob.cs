@@ -17,24 +17,27 @@ namespace xshazwar.noize.geologic {
 	public struct ParticlePoolMinimaJob<J> : IJobFor
         where J : struct, IPoolSuperPosition
         {
+        NativeStream.Writer minimaWriter;
         J poolJob;
 
-		public void Execute (int z) => poolJob.CreateSuperPositions(z);
+		public void Execute (int z) => poolJob.CreateSuperPositions(z, minimaWriter);
 
 		public static JobHandle ScheduleParallel (
             // compute outflow this is RO
 			NativeSlice<float> heightMap,
+            NativeSlice<float> outMap,
             NativeArray<Cardinal> flow,
             NativeStream minimaStream,
             int resolution,
             JobHandle dependency
 		)
         {
-            // NativeStream minimaStream = new NativeStream(resolution, Allocator.Persistent);
             
-            var job = new ParticlePoolMinimaJob<J>();
-            job.poolJob = new J { minimaStream = minimaStream };
-			job.poolJob.Setup(flow, heightMap, resolution);
+            var job = new ParticlePoolMinimaJob<J> {
+                minimaWriter = minimaStream.AsWriter()
+            };
+            job.poolJob = new J();
+			job.poolJob.Setup(flow, heightMap, outMap, resolution);
 
             // no temporary allocations, so no need to dispose
 			return job.ScheduleParallel(
@@ -45,6 +48,7 @@ namespace xshazwar.noize.geologic {
 
     public delegate JobHandle ParticlePoolMinimaJobDelegate(
             NativeSlice<float> heightMap,
+            NativeSlice<float> outMap,
             NativeArray<Cardinal> flow,
             NativeStream minimaStream,
             int resolution,
@@ -52,9 +56,10 @@ namespace xshazwar.noize.geologic {
     );
 
 	[BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
-	public struct ParticlePoolCollapse<J> : IJobFor
+	public struct ParticlePoolCollapseJob<J> : IJobFor
         where J : struct, IPoolSuperPosition
         {
+        [ReadOnly]
         NativeStream.Reader streamReader;
         J poolJob;
 
@@ -70,6 +75,7 @@ namespace xshazwar.noize.geologic {
 		public static JobHandle ScheduleParallel (
             // compute outflow this is RO
 			NativeSlice<float> heightMap,
+            NativeSlice<float> outMap,
             NativeArray<Cardinal> flow,
             NativeStream minimaStream,
             int resolution,
@@ -78,9 +84,9 @@ namespace xshazwar.noize.geologic {
         {
             // NativeStream minimaStream = new NativeStream(resolution, Allocator.Persistent);
             
-            var job = new ParticlePoolCollapse<J> { streamReader = minimaStream.AsReader()};
-            job.poolJob = new J { minimaStream = minimaStream };
-			job.poolJob.Setup(flow, heightMap, resolution);
+            var job = new ParticlePoolCollapseJob<J> { streamReader = minimaStream.AsReader()};
+            job.poolJob = new J();
+			job.poolJob.Setup(flow, heightMap, outMap, resolution);
 
 			return job.ScheduleParallel(
                 minimaStream.ForEachCount, 1, dependency
@@ -90,6 +96,7 @@ namespace xshazwar.noize.geologic {
 
     public delegate JobHandle ParticlePoolCollapseJobDelegate(
             NativeSlice<float> heightMap,
+            NativeSlice<float> outMap,
             NativeArray<Cardinal> flow,
             NativeStream minimaStream,
             int resolution,
