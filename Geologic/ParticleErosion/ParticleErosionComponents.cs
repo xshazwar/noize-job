@@ -31,28 +31,47 @@ namespace xshazwar.noize.geologic {
         A  = 0b_11111111
     }
 
-    struct FlowSuperPosition {
+    struct FlowSuperPosition : IPoolSuperPosition{
         public static readonly int2[] neighbors = new int2[] {
             // matches Cardinal convention
             // opposite d === (d * -1)
-            new int2(-1,  1),
-            new int2( 1, -1),
-            new int2( 0,  1),
-            new int2( 0, -1),
-            new int2( 1,  1),
-            new int2(-1, -1),
-            new int2( 1,  0),
-            new int2(-1,  0),   
+            new int2(-1,  1), // NW 
+            new int2( 1, -1), // SE
+            new int2( 0,  1), // N
+            new int2( 0, -1), // S
+            new int2( 1,  1), // NE
+            new int2(-1, -1), // SW
+            new int2( 1,  0), // E
+            new int2(-1,  0), // W   
         };
         
+        public NativeStream minimaStream {get; set;}   
+        
         int2 res;
+        
+        [NativeDisableContainerSafetyRestriction]
         NativeArray<Cardinal> flow;
+        
+        [NativeDisableContainerSafetyRestriction]
+        NativeSlice<float> heightMap;
         
         int getIdx(int x, int z){
             return x + (res.x * z);
         }
 
-        void CreateSuperpositions(int z, NativeArray<float> heightMap){
+        int getIdx(int2 pos){
+            return getIdx(pos.x, pos.y);
+        }
+
+        int2 getPos(int idx){
+            int x = idx % res.x;
+            int z = (idx - x) / res.y;
+            return new int2(x, z);
+        }
+
+        public void CreateSuperPositions(int z){
+            NativeStream.Writer minimaWriter = minimaStream.AsWriter();
+            minimaWriter.BeginForEachIndex(z);
             int idxN = 0;
             float height = 0f;
             for(int x = 0; x < res.x; x++){
@@ -66,11 +85,19 @@ namespace xshazwar.noize.geologic {
                         v = v | (Cardinal)( ( ((byte)1) << d ) );
                     }
                 }
+                if (v == Cardinal.X){
+                    minimaWriter.Write<int>(idx);
+                }
                 flow[idx] = v;
             }
+            minimaWriter.EndForEachIndex();
         }
 
-        bool CollectNeighbors(int2 pos, ref NativeParallelHashMap<int, Cardinal> neighborhood){
+        bool UpdateFrontier(
+            int2 pos,
+            ref NativeParallelHashMap<int, Cardinal> frontier,
+            ref NativeParallelHashSet<int> basin
+        ){
             bool foundNeighbor = false;
             int2 nKey;
             int idxN;
@@ -80,19 +107,19 @@ namespace xshazwar.noize.geologic {
                 nKey = neighbors[d] + pos;
                 idxN = getIdx(nKey.x, nKey.y);
                 // TODO validate if off edge?
-                if (!neighborhood.ContainsKey(idxN)){
+                if (!frontier.ContainsKey(idxN) && !basin.Contains(idxN)){
                     inverseIdx = d + reciprocal;
                     Cardinal mask = flow[idxN];
                     mask = PruneMask(inverseIdx, mask, ref foundNeighbor);
-                    neighborhood.Add(idxN, mask);
+                    frontier.Add(idxN, mask);
                 }
                 reciprocal *= -1;
             }
             return foundNeighbor;
         }
 
-        bool PruneNeighbors(int2 pos, ref NativeParallelHashMap<int, Cardinal> neighborhood){
-            bool pruned = false;
+        bool CollapseFrontierState(int2 pos, ref NativeParallelHashMap<int, Cardinal> frontier){
+            bool collapsed = false;
             int2 nKey;
             int idxN;
             int reciprocal = 1;
@@ -100,20 +127,41 @@ namespace xshazwar.noize.geologic {
             for(int d = 0; d < 8; d++){
                 nKey = neighbors[d] + pos;
                 idxN = getIdx(nKey.x, nKey.y);
-                if (neighborhood.ContainsKey(idxN)){
+                if (frontier.ContainsKey(idxN)){
                     inverseIdx = d + reciprocal;
                     // h -> n = neighbors[n] || Cardinal[n]
                     // n -> h = neighbors[n + reciprocal] || Cardinal[n + reciprocal]
-                    // remove self from neighbors mask, indicate pruned
+                    // remove self from neighbors mask, indicate collapsed
 
-                    neighborhood[idxN] = PruneMask(inverseIdx, neighborhood[idxN], ref pruned);  
+                    frontier[idxN] = PruneMask(inverseIdx, frontier[idxN], ref collapsed);  
                 }
                 // the opposite direction flops between ahead and behind the current neighbor direction
                 // [d == 0] NW ( + 1) === SE
                 // [d == 1] SE ( - 1) === NW
                 reciprocal *= -1;
             }
-            return pruned;
+            return collapsed;
+        }
+
+        bool MoveToBasin(
+            ref NativeParallelHashMap<int, Cardinal> frontier,
+            ref NativeParallelHashSet<int> basin
+        ){
+            bool foundNewFrontier = false;
+            var kvps = frontier.GetEnumerator();
+            while(kvps.MoveNext()){
+                KeyValue<int, Cardinal> pair = kvps.Current;
+                if(pair.Value == Cardinal.X){
+                    frontier.Remove(pair.Key);
+                    basin.Add(pair.Key);
+                    foundNewFrontier = UpdateFrontier(
+                        getPos(pair.Key),
+                        ref frontier,
+                        ref basin
+                        ) || foundNewFrontier;
+                }
+            }
+            return foundNewFrontier;
         }
 
         Cardinal PruneMask(int directionIdx, Cardinal mask, ref bool changed){
@@ -124,9 +172,35 @@ namespace xshazwar.noize.geologic {
             return mask;
         }
 
-        void CollapseMinima(int2 pos){
+        public void CollapseMinima(int idx){
+            int2 pos = getPos(idx);
+            // This could conceivable by a giant funnel which would have the whole tile as a basin, but we'll start with a small segment
+            var frontier = new NativeParallelHashMap<int, Cardinal>(res.x, Allocator.Temp);
+            var basin = new NativeParallelHashSet<int>(res.x, Allocator.Temp);
+            bool basinComplete = false;
+            // by definition the minima is in the basin.
+            basin.Add(idx);
+            // Our frontier starts with the adjacent values
+            UpdateFrontier(pos, ref frontier, ref basin);
+            while(!basinComplete){
+                var kvps = frontier.GetEnumerator();
+                bool collapsed = false;
+                while(kvps.MoveNext()){
+                    KeyValue<int, Cardinal> pair = kvps.Current;
+                    collapsed = CollapseFrontierState(pos, ref frontier) || collapsed;
+                }
+                basinComplete = !MoveToBasin(ref frontier, ref basin);
+            }    
+        }
 
+        // public NativeArray<Cardinal> flow;
+        // public NativeArray<float> heightMap {get; set;}
+        // public NativeArray<float> poolMaxDepthMap {get; set;}
 
+        public void Setup(NativeArray<Cardinal> flow_, NativeSlice<float> heightMap_, int resolution){
+            res = new int2(resolution, resolution);
+            flow = flow_;
+            heightMap = heightMap_;
         }
 
 
