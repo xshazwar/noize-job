@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -16,6 +18,19 @@ using xshazwar.noize.filter;
 
 namespace xshazwar.noize.geologic {
     using Unity.Mathematics;
+
+    struct LazyFloatComparer: IComparer<float> {
+        public int Compare(float a, float b){
+            float diff = abs(b - a);
+            if (abs(diff) < .0000001){
+                return 0;
+            }
+            if (diff > 0){
+                return 1;
+            }
+            return -1;
+        }
+    }
 
     // [Flags]
     public enum Cardinal : byte {
@@ -36,40 +51,59 @@ namespace xshazwar.noize.geologic {
     }
 
     
-    // Boundaries -> { pos : [min_0_idx, ..., min_n_idx]}
+    // Boundaries -> { posMinima : [min_0_idx, ..., min_n_idx]}
+    // Pools -> { posMinima : Pool}
+    // PoolPositions { idx : PoolPosition} // Sparse Map
 
-    // struct PoolPosition {
-    //     float waterHeight; // current height of pool here
-    //     float floodStart; // level at which flow stops and flooding starts
-    //     float floodEnd;  // level at which cascading starts
-    //     int minimaIndex; // where to find the minima this is linked to
-    // }
+    struct Pool {
+        public int indexMinima;
+        public float minimaHeight;
+        public int indexDrain;
+        public float drainHeight;
+        public float capacity;
+        public float currentVolume;
+        public float b1;
+        public float b2;
 
-    // struct Drain {
-    //     int idx; // index on heightmap
-    //     float overflowThreshold; // height at minima at which overflow starts
-    // }
+        public void Init(int indexMinima_, float minimaHeight_, int indexDrain_, float drainHeight_){
+            indexMinima = indexMinima_;
+            minimaHeight = minimaHeight_;
+            indexDrain = indexDrain_;
+            drainHeight = drainHeight_;
+            currentVolume = 0f;
+        }
 
-    // struct HeightValue {
-    //     int idx;
-    //     int height; 
-    // }
+        public void EstimateHeight(float cellHeight, out float waterHeight){
+            waterHeight = (b1 + b2 * log(currentVolume)) - (cellHeight - minimaHeight);
+        }
+        
+        public void SolvePool(NativeArray<float> heights){
+            capacity = 0f;
+            NativeArray<float> trainingVolumes = new NativeArray<float>(heights.Length, Allocator.Temp);
 
-    // public struct HeightValueSort: IComparer<HeightValue>{
-    //     public int Compare(HeightValue a, HeightValue b){
-    //         float diff = abs(b - a);
-    //         if (abs(diff) < .0000001){
-    //             return 0;
-    //         }
-    //         if (diff > 0){
-    //             return 1;
-    //         }
-    //         return -1;
-    //     }
-    // }
+            heights.Sort<float, LazyFloatComparer>(new LazyFloatComparer());
+            minimaHeight = heights[0];
+            float volumeBehind = 0f;
+            trainingVolumes[0] = .0000001f;
+            for (int i = 0 ; i < heights.Length; i++){
+                capacity += drainHeight - heights[i];
+                if (i > 0){
+                    volumeBehind += ((heights[i] - heights[i - 1]) * i);
+                    trainingVolumes[i] = volumeBehind;
+                }  
+            }
+            Regression regressor = new Regression();
+            regressor.LogRegression(heights, trainingVolumes, out b1, out b2);
+        }
+    }
+
+    struct PoolPosition {
+        float height; // current height land
+        int minimaIndex; // where to find the minima this is linked to -> It's Pool
+    }
 
     struct Regression {
-        float Mean(NativeList<float> items){
+        float Mean(NativeArray<float> items){
             float sum = 0f;
             for( int i = 0; i < items.Length; i ++){
                 sum += items[i];
@@ -77,7 +111,7 @@ namespace xshazwar.noize.geologic {
             return sum / items.Length;
         }
 
-        float SumSquareDifference(NativeList<float> items){
+        float SumSquareDifference(NativeArray<float> items){
             float i_mean = Mean(items);
             float sum = 0f;
             for( int i = 0; i < items.Length; i ++){
@@ -86,7 +120,7 @@ namespace xshazwar.noize.geologic {
             return sum;
         }
 
-        float ComputeSXY(NativeList<float> xs, NativeList<float> ys){
+        float ComputeSXY(NativeArray<float> xs, NativeArray<float> ys){
             float mean_x = Mean(xs);
             float mean_y = Mean(ys);
             float sum = 0f;
@@ -96,7 +130,7 @@ namespace xshazwar.noize.geologic {
             return sum;
         }
 
-        float MeanSquareError(NativeList<float> pred, NativeList<float> real){
+        float MeanSquareError(NativeArray<float> pred, NativeArray<float> real){
             float sum = 0f;
             for( int i = 0; i < pred.Length; i ++){
                 sum += pow((pred[i] - real[i]), 2);
@@ -108,7 +142,7 @@ namespace xshazwar.noize.geologic {
             return b1 + b2 * log(x);
         }
 
-        void LogRegression(NativeList<float> xs, NativeList<float> ys, out float b1, out float b2, bool RectifyToEndValue = true){
+        public void LogRegression(NativeArray<float> xs, NativeArray<float> ys, out float b1, out float b2, bool RectifyToEndValue = true){
             // Convert x -> ln(x)
             int size = xs.Length;
             float xM = xs[size - 1];
@@ -432,22 +466,6 @@ namespace xshazwar.noize.geologic {
 
 
     }
-
-    // struct Pool {
-    //     public uint indexMinima;
-    //     public uint indexDrain;
-    //     public float capacity;
-    //     public float volume;
-    // }
-
-    // struct PoolMap {
-        
-    //     static readonly float drainTolerance = .001f;
-    //     int2 res;
-    //     NativeArray<float> heightMap;
-    //     NativeArray<PoolPosition> pool;
-    //     NativeList<int> minima;
-    // }
 
 
     struct WorldTile {
