@@ -3,6 +3,7 @@ using Unity.Jobs;
 using UnityEngine;
 
 using static Unity.Mathematics.math;
+using Unity.Profiling;
 
 using xshazwar.noize.filter;
 using xshazwar.noize.pipeline;
@@ -39,7 +40,7 @@ namespace xshazwar.noize.geologic {
 
     public interface IPoolSuperPosition {
         void CreateSuperPositions(int z, NativeStream.Writer minimaStream);
-        void CollapseMinima(int idx);
+        void CollapseMinima(int idx, ProfilerMarker? marker = null);
         void Setup(NativeArray<Cardinal> flow_, NativeSlice<float> heightMap_, NativeSlice<float> outMap_, int resolution);
 
     }

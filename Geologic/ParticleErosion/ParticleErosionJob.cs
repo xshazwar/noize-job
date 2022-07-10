@@ -1,4 +1,5 @@
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.Profiling;
 
 using Unity.Burst;
 using Unity.Collections;
@@ -13,7 +14,7 @@ using xshazwar.noize.filter;
 namespace xshazwar.noize.geologic {
     using Unity.Mathematics;
 
-	[BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+	[BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
 	public struct ParticlePoolMinimaJob<J> : IJobFor
         where J : struct, IPoolSuperPosition
         {
@@ -55,10 +56,13 @@ namespace xshazwar.noize.geologic {
             JobHandle dependency
     );
 
-	[BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+	[BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
 	public struct ParticlePoolCollapseJob<J> : IJobFor
         where J : struct, IPoolSuperPosition
         {
+        
+        ProfilerMarker profiler;
+        
         [ReadOnly]
         NativeStream.Reader streamReader;
         J poolJob;
@@ -67,7 +71,7 @@ namespace xshazwar.noize.geologic {
             int count = streamReader.BeginForEachIndex(index);
             for(int n = 0; n < count; n ++){
                 int minimaIdx = streamReader.Read<int>();
-                poolJob.CollapseMinima(minimaIdx);
+                poolJob.CollapseMinima(minimaIdx, profiler = profiler);
             }
             streamReader.EndForEachIndex();
         }
@@ -82,14 +86,15 @@ namespace xshazwar.noize.geologic {
             JobHandle dependency
 		)
         {
-            // NativeStream minimaStream = new NativeStream(resolution, Allocator.Persistent);
             
             var job = new ParticlePoolCollapseJob<J> { streamReader = minimaStream.AsReader()};
             job.poolJob = new J();
+            ProfilerMarker marker_ = new ProfilerMarker("PoolColapse");
+            job.profiler = marker_;
 			job.poolJob.Setup(flow, heightMap, outMap, resolution);
 
 			return job.ScheduleParallel(
-                minimaStream.ForEachCount, 1, dependency
+                resolution, 1, dependency
 			);
 		}
 	}

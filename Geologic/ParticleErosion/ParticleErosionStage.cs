@@ -21,6 +21,8 @@ namespace xshazwar.noize.geologic {
         static ParticlePoolCollapseJobDelegate poolJob = ParticlePoolCollapseJob<FlowSuperPosition>.ScheduleParallel;
 
         private NativeArray<float> tmp;
+        
+        [NativeDisableContainerSafetyRestriction]
         private NativeArray<Cardinal> flow;
         
         [NativeDisableContainerSafetyRestriction]
@@ -49,16 +51,16 @@ namespace xshazwar.noize.geologic {
                 d.resolution,
                 dependency
             );
-            // JobHandle second = poolJob(
-            //     d.data,
-            //     tmp,
-            //     flow,
-            //     stream,
-            //     d.resolution,
-            //     dependency
-            // );
-            // jobHandle = TileHelpers.SWAP_RWTILE(d.data, tmp, second);
-            jobHandle = TileHelpers.SWAP_RWTILE(d.data, tmp, first);
+            JobHandle second = poolJob(
+                d.data,
+                tmp,
+                flow,
+                stream,
+                d.resolution,
+                first
+            );
+            jobHandle = TileHelpers.SWAP_RWTILE(d.data, tmp, second);
+            // jobHandle = TileHelpers.SWAP_RWTILE(d.data, tmp, first);
         }
 
         public override void OnDestroy()
