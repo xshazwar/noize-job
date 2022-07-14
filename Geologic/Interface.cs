@@ -40,8 +40,31 @@ namespace xshazwar.noize.geologic {
 
     public interface IPoolSuperPosition {
         void CreateSuperPositions(int z, NativeStream.Writer minimaStream);
-        void CollapseMinima(int idx, ProfilerMarker? marker = null);
-        void Setup(NativeArray<Cardinal> flow_, NativeSlice<float> heightMap_, NativeSlice<float> outMap_, int resolution);
+        void CollapseMinima(
+            int minimaIdx,
+            NativeParallelMultiHashMap<int, int>.ParallelWriter boundaryWriterBM,
+            NativeParallelMultiHashMap<int, int>.ParallelWriter boundaryWriterMB,
+            NativeParallelHashMap<int, int>.ParallelWriter catchmentWriter,
+            ProfilerMarker? profiler = null
+        );
+
+        void SolvePoolHeirarchy(
+            NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
+            NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
+            NativeParallelHashMap<int, int> catchmentMap
+        );
+        void SetupCollapse(
+            int resolution,
+            NativeArray<Cardinal> flow_,
+            NativeSlice<float> heightMap_,
+            NativeSlice<float> outMap_);
+        
+        void SetupPoolGeneration(
+            int resolution,
+            NativeSlice<float> heightMap_,
+            NativeSlice<float> outMap_
+        );
+
 
     }
 

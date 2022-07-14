@@ -18,7 +18,8 @@ namespace xshazwar.noize.geologic {
 
 
         static ParticlePoolMinimaJobDelegate minimaJob = ParticlePoolMinimaJob<FlowSuperPosition>.ScheduleParallel;
-        static ParticlePoolCollapseJobDelegate poolJob = ParticlePoolCollapseJob<FlowSuperPosition>.ScheduleParallel;
+        static ParticlePoolCollapseJobDelegate poolCollapseJob = ParticlePoolCollapseJob<FlowSuperPosition>.ScheduleParallel;
+        static PoolCreationJobDelegate poolCreateJob = PoolCreationJob<FlowSuperPosition>.Schedule;
 
         private NativeArray<float> tmp;
         
@@ -27,6 +28,10 @@ namespace xshazwar.noize.geologic {
         
         [NativeDisableContainerSafetyRestriction]
         private NativeStream stream;
+
+        private NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima;
+        private NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers;
+        private NativeParallelHashMap<int, int> catchmentMap;
         public override void ResizeNativeContainers(int size){
             // Resize containers
             
@@ -34,10 +39,16 @@ namespace xshazwar.noize.geologic {
                 tmp.Dispose();
                 flow.Dispose();
                 stream.Dispose();
+                boundaryMapMemberToMinima.Dispose();
+                boundaryMapMinimaToMembers.Dispose();
+                catchmentMap.Dispose();
             }
             tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             flow = new NativeArray<Cardinal>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             stream = new NativeStream(size, Allocator.Persistent);
+            boundaryMapMemberToMinima = new NativeParallelMultiHashMap<int, int>(size, Allocator.Persistent);
+            boundaryMapMinimaToMembers = new NativeParallelMultiHashMap<int, int>(size, Allocator.Persistent);
+            catchmentMap = new NativeParallelHashMap<int, int>(dataLength, Allocator.Persistent);
         }
 
         public override void Schedule(PipelineWorkItem requirements, JobHandle dependency ){
@@ -51,15 +62,26 @@ namespace xshazwar.noize.geologic {
                 d.resolution,
                 dependency
             );
-            JobHandle second = poolJob(
+            JobHandle second = poolCollapseJob(
                 d.data,
                 tmp,
                 flow,
                 stream,
+                boundaryMapMemberToMinima,
+                boundaryMapMinimaToMembers,
+                catchmentMap,
                 d.resolution,
                 first
             );
-            jobHandle = TileHelpers.SWAP_RWTILE(d.data, tmp, second);
+            JobHandle third = poolCreateJob(
+                d.data,
+                tmp,
+                boundaryMapMemberToMinima,boundaryMapMinimaToMembers,
+                catchmentMap,
+                d.resolution,
+                second
+            );
+            jobHandle = TileHelpers.SWAP_RWTILE(d.data, tmp, third);
             // jobHandle = TileHelpers.SWAP_RWTILE(d.data, tmp, first);
         }
 
@@ -69,6 +91,9 @@ namespace xshazwar.noize.geologic {
                 tmp.Dispose();
                 flow.Dispose();
                 stream.Dispose();
+                boundaryMapMemberToMinima.Dispose();
+                boundaryMapMinimaToMembers.Dispose();
+                catchmentMap.Dispose();
             }
         }
     }

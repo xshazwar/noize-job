@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 using System.Runtime.CompilerServices;
@@ -50,10 +51,38 @@ namespace xshazwar.noize.geologic {
         A  = 0b_11111111
     }
 
+    // Filled in CollaposeMinima
+    // Boundaries -> { idx : [min_0_idx, ..., min_n_idx]}
+    // CatchmentMembership { idx : minimaIdx} // Not an array because this is a Sparse Map
+
+    // Filled in SolvePoolHeirarchy
+    // Pools -> { PoolKey : Pool}
+
     
-    // Boundaries -> { posMinima : [min_0_idx, ..., min_n_idx]}
-    // Pools -> { posMinima : Pool}
-    // PoolPositions { idx : PoolPosition} // Sparse Map
+
+    struct PoolKey : IEquatable<PoolKey>, IComparable<PoolKey> {
+        // This can be used to reference a minima or a drain. Anything that is ambigous between pool orders
+        public int idx;
+        // A minima can host multiple successive pools of different characteristics, so we allow an order here. Zero is the smallest pool
+        public byte order;
+    
+        public bool Equals(PoolKey other){
+            if (idx != other.idx){
+                return false;
+            }
+            return (order == other.order);
+        }
+
+        public int CompareTo(PoolKey obj){
+            if (obj.Equals(this)){ return 0;}
+            return GetHashCode() > obj.GetHashCode() ? 1 : -1;
+        }
+     
+        public override int GetHashCode(){
+            return idx.GetHashCode() ^ order.GetHashCode();
+        }
+    
+    }
 
     struct Pool {
         public int indexMinima;
@@ -61,20 +90,25 @@ namespace xshazwar.noize.geologic {
         public int indexDrain;
         public float drainHeight;
         public float capacity;
-        public float currentVolume;
+        public float volume;
+        // Beta1 for regression
         public float b1;
+        // Beta2 for regression
         public float b2;
+        
+        // In cases where two pools flow into each other. When both are full a new pool is created. This is the reference
+        public PoolKey? supercededBy;
 
         public void Init(int indexMinima_, float minimaHeight_, int indexDrain_, float drainHeight_){
             indexMinima = indexMinima_;
             minimaHeight = minimaHeight_;
             indexDrain = indexDrain_;
             drainHeight = drainHeight_;
-            currentVolume = 0f;
+            volume = 0f;
         }
 
         public void EstimateHeight(float cellHeight, out float waterHeight){
-            waterHeight = (b1 + b2 * log(currentVolume)) - (cellHeight - minimaHeight);
+            waterHeight = (b1 + b2 * log(volume)) - (cellHeight - minimaHeight);
         }
         
         public void SolvePool(NativeArray<float> heights){
@@ -95,11 +129,6 @@ namespace xshazwar.noize.geologic {
             Regression regressor = new Regression();
             regressor.LogRegression(heights, trainingVolumes, out b1, out b2);
         }
-    }
-
-    struct PoolPosition {
-        float height; // current height land
-        int minimaIndex; // where to find the minima this is linked to -> It's Pool
     }
 
     struct Regression {
@@ -165,7 +194,7 @@ namespace xshazwar.noize.geologic {
 
     }
 
-    struct FlowSuperPosition : IPoolSuperPosition{
+    struct FlowSuperPosition : IPoolSuperPosition {
         public static readonly int2[] neighbors = new int2[] {
             // matches Cardinal convention
             // opposite d === (d * -1)
@@ -382,8 +411,15 @@ namespace xshazwar.noize.geologic {
             }
         }
 
-        public void CollapseMinima(int idx, ProfilerMarker? profiler = null){
-            int2 pos = getPos(idx);
+        public void CollapseMinima(
+            int minimaIdx,
+            // boundary coincidence is annoying to calculate so we'll double link it
+            NativeParallelMultiHashMap<int, int>.ParallelWriter boundaryWriterBM,
+            NativeParallelMultiHashMap<int, int>.ParallelWriter boundaryWriterMB,
+            NativeParallelHashMap<int, int>.ParallelWriter catchmentWriter,
+            ProfilerMarker? profiler = null
+        ){
+            int2 pos = getPos(minimaIdx);
             // TODO see if we can optimize the size of these collections so they don't need to resize
             NativeParallelHashMap<int, Cardinal> frontier = new NativeParallelHashMap<int, Cardinal>(
                 (int)(res.x ), Allocator.Temp);
@@ -396,7 +432,7 @@ namespace xshazwar.noize.geologic {
         
             bool basinComplete = false;
             // by definition the minima is in the basin.
-            basin.Add(idx);
+            basin.Add(minimaIdx);
             // Our frontier starts with the adjacent values
             UpdateFrontier(pos, ref frontier, ref basin);
             NativeParallelHashMap<int, Cardinal>.Enumerator frontierEnumerator = frontier.GetEnumerator();
@@ -420,7 +456,6 @@ namespace xshazwar.noize.geologic {
                 profiler?.End();
             }
 
-            // NativeParallelHashMap<int, Cardinal>.Enumerator frontierEnumerator = frontier.GetEnumerator();
             frontierEnumerator.Reset();
             int drainIdx = 0;
             int probeIdx = 0;
@@ -429,37 +464,255 @@ namespace xshazwar.noize.geologic {
             while(frontierEnumerator.MoveNext()){
                 probeIdx = frontierEnumerator.Current.Key;
                 if (basin.Contains(probeIdx)) continue;
-                outMap[probeIdx] = 0f;
+                boundaryWriterBM.Add(probeIdx, minimaIdx);
+                boundaryWriterMB.Add(minimaIdx, probeIdx);
+            }
+            NativeParallelHashSet<int>.Enumerator basinMembers = basin.GetEnumerator();
+            while(basinMembers.MoveNext()){
+                probeIdx = basinMembers.Current;
+                catchmentWriter.TryAdd(probeIdx, minimaIdx);
+            }
+        }
+
+        public void CollectPoolMembers(
+            NativeArray<int> minimaSet,
+            float drainHeight,
+            NativeParallelHashMap<int, int>.Enumerator catchmentMap,
+            ref NativeList<float> members
+        ){
+            while(catchmentMap.MoveNext()){
+                if (NativeArrayExtensions.Contains<int, int>(minimaSet, catchmentMap.Current.Value)){
+                    float height = heightMap[catchmentMap.Current.Key];
+                    if (height < drainHeight){
+                        members.Add(height);
+                    }
+                } 
+            }
+        }
+
+        public void CollectPoolMembers(
+            int minimaIdx,
+            float drainHeight,
+            NativeParallelHashMap<int, int>.Enumerator catchmentMap,
+            ref NativeList<float> members
+        ){
+            while(catchmentMap.MoveNext()){
+                if (minimaIdx == catchmentMap.Current.Value){
+                    float height = heightMap[catchmentMap.Current.Key];
+                    if (height < drainHeight){
+                        members.Add(height);
+                    }
+                } 
+            }
+        }
+
+        public void CreatePool(
+            NativeArray<int> minimaSet,
+            int drainIdx,
+            NativeParallelHashMap<int, int>.Enumerator catchmentMap,
+            int estimatedSize,
+            ref NativeList<float> members,
+            ref NativeParallelHashMap<PoolKey, Pool> pools
+        ){
+            int probeIdx = 0;
+            float drainHeight = heightMap[drainIdx];
+            if (minimaSet.Length > 1) {
+                CollectPoolMembers(minimaSet, drainHeight, catchmentMap, ref members);
+            }
+            
+            int referenceMinima = 0;
+            byte order = (byte) minimaSet.Length;
+            float refMinHeight = float.MaxValue;
+
+            for (int i = 0; i < minimaSet.Length; i++){
+                if (heightMap[minimaSet[i]] < refMinHeight){
+                    refMinHeight = heightMap[minimaSet[i]];
+                    referenceMinima = minimaSet[i];
+                }
+            }
+            Pool pool = new Pool();
+            pool.Init(referenceMinima, refMinHeight, drainIdx, drainHeight);
+            pool.SolvePool(members.AsArray());
+            PoolKey key = new PoolKey {
+                idx = referenceMinima,
+                order = order
+            };
+            members.Dispose();
+            catchmentMap.Reset();
+        }
+
+        public bool IgnoreCommonBorder(
+            int idx,
+            ref NativeList<int> minimas,
+            ref NativeParallelMultiHashMap<int, int> boundaryBM)
+        {
+            int cnt = 0;
+            var BMIter = boundaryBM.GetValuesForKey(idx);
+            while(BMIter.MoveNext()){
+                if(NativeArrayExtensions.Contains<int, int>(minimas, BMIter.Current)){
+                    cnt += 1;
+                }
+            }
+            return cnt < 2;
+        }
+
+        public void FindDrain(
+            int minimaIdx,
+            ref NativeParallelMultiHashMap<PoolKey, int> drainToMinima,
+            ref NativeParallelMultiHashMap<PoolKey, int> minimaToDrain,
+            ref NativeParallelMultiHashMap<int, int> boundaryMB
+        ){
+            // Finds the drain in a single minima catchment
+            // By definition this is a first order Pool
+            float drainHeight = float.MaxValue;
+            int drainIdx = 0;
+            NativeParallelMultiHashMap<int, int>.Enumerator bIdx = boundaryMB.GetValuesForKey(minimaIdx);
+            int probeIdx = 0;
+            while(bIdx.MoveNext()){
+                probeIdx = bIdx.Current;
                 if (heightMap[probeIdx] < drainHeight){
                     drainHeight = heightMap[probeIdx];
                     drainIdx = probeIdx;
                 }
             }
-            // Debug.Log(drainIdx);
+            PoolKey key = new PoolKey {idx = drainIdx, order = (byte) 1};
+            drainToMinima.Add(key, minimaIdx);
+            key.idx = minimaIdx;
+            minimaToDrain.Add(key, drainIdx);
+        }
 
-            // HeightValueSort
-            outMap[idx] = 1f;
-            NativeParallelHashSet<int>.Enumerator basinMembers = basin.GetEnumerator();
-            while(basinMembers.MoveNext()){
-                probeIdx = basinMembers.Current;
-                if(probeIdx == idx){
-                    continue;
+        public void FindDrain(
+            ref NativeList<int> minimas,
+            ref NativeParallelMultiHashMap<PoolKey, int> drainToMinima,
+            ref NativeParallelMultiHashMap<PoolKey, int> minimaToDrain,
+            ref NativeParallelMultiHashMap<int, int> boundaryMB,
+            ref NativeParallelMultiHashMap<int, int> boundaryBM
+        ){
+            // Ignores the shared border between multiple catchments, and finds the lowest point on the remaining boundary
+            int lowestMinima = 0;
+            float lowestMinimaHeight = float.MaxValue;
+            int minimaIdx = 0;
+            int probeIdx = 0;
+            float drainHeight = float.MaxValue;
+            int drainIdx = 0;
+            for(int i = 0; i < minimas.Length; i++){
+                minimaIdx = minimas[i];
+                if(heightMap[minimaIdx] < lowestMinimaHeight){
+                    lowestMinimaHeight = heightMap[minimaIdx];
+                    lowestMinima = minimaIdx;
                 }
-                if (heightMap[probeIdx] < drainHeight){
-                    outMap[probeIdx] = .2f;
-                    // Debug.Log(probeIdx);
+                NativeParallelMultiHashMap<int, int>.Enumerator bIdx = boundaryMB.GetValuesForKey(minimaIdx);
+                while(bIdx.MoveNext()){
+                    probeIdx = bIdx.Current;
+                    if(!IgnoreCommonBorder(
+                        probeIdx,
+                        ref minimas,
+                        ref boundaryBM
+                    )){
+                        continue;
+                    }
+                    if (heightMap[probeIdx] < drainHeight){
+                        drainHeight = heightMap[probeIdx];
+                        drainIdx = probeIdx;
+                    }
                 }
-                // else{
-                //     outMap[probeIdx] = .4f;
-                // }
             }
-            outMap[drainIdx] = 1f;
+            PoolKey key = new PoolKey {
+                idx = drainIdx,
+                order = (byte) minimas.Length
+            };
+            Debug.Log($"multi pk: {key.idx}, {key.order}");
+            for(int i = 0; i < minimas.Length; i++){
+                drainToMinima.Add(key, minimas[i]);
+            }
+            for(int i = 0; i < minimas.Length; i++){
+                key.idx = minimas[i];
+                drainToMinima.Add(key, drainIdx);
+            }
 
         }
 
-        public void Setup(NativeArray<Cardinal> flow_, NativeSlice<float> heightMap_, NativeSlice<float> outMap_, int resolution){
+        public void SolvePoolHeirarchy(
+            NativeParallelMultiHashMap<int, int> boundaryBM,
+            NativeParallelMultiHashMap<int, int> boundaryMB,
+            NativeParallelHashMap<int, int> catchment
+        ){
+            var catchIter = catchment.GetEnumerator();
+            
+            var (mnIdxs, mnSize) = NativeParallelHashMapExtensions.GetUniqueKeyArray(boundaryMB, Allocator.Temp);
+            // drainToMinima [idx] -> minima
+            NativeParallelMultiHashMap<PoolKey, int> drainToMinima = new NativeParallelMultiHashMap<PoolKey, int>(mnIdxs.Length, Allocator.Temp);
+            NativeParallelMultiHashMap<PoolKey, int> minimaToDrain = new NativeParallelMultiHashMap<PoolKey, int>(mnIdxs.Length, Allocator.Temp);
+
+            for(int i = 0; i < mnSize; i++){
+                outMap[mnIdxs[i]] = .2f;
+                FindDrain(mnIdxs[i], ref drainToMinima, ref minimaToDrain, ref boundaryMB);      
+            }
+            NativeList<int> minimas = new NativeList<int>(32, Allocator.Temp);
+
+            int searchDepth = 1;
+            int drainSize = 1;
+            NativeArray<PoolKey> drainKeys;
+            PoolKey probe = new PoolKey();
+            while(searchDepth < 16){
+                (drainKeys, drainSize) = NativeParallelHashMapExtensions.GetUniqueKeyArray(drainToMinima, Allocator.Temp);
+                for (int i = 0; i < drainSize; i++){
+                    PoolKey drainKey = drainKeys[i];
+                    if (drainKey.order < searchDepth) continue;
+                    var minimaIter = drainToMinima.GetValuesForKey(drainKey);
+                    while(minimaIter.MoveNext()){
+                        if(!NativeArrayExtensions.Contains<int, int>(minimas, minimaIter.Current)){
+                            minimas.Add(minimaIter.Current);
+                        }
+                    }
+                    int minSize = minimas.Length;
+                    probe.order = (byte) minSize;
+                    bool fail = false;
+                    for(int x = 0; x < minSize; x++){
+                        probe.idx = minimas[x];
+                        fail = fail || drainToMinima.ContainsKey(probe);
+                    }
+                    if(minSize > (int) drainKey.order && !fail){
+                        Debug.Log($"drain -> {drainKey.idx}: minima {minSize} | keyorder {drainKey.order} | round {searchDepth}");
+                        FindDrain(ref minimas, ref drainToMinima, ref minimaToDrain, ref boundaryMB, ref boundaryBM);
+                    }
+                    minimas.Clear();
+                }
+                drainKeys.Dispose();
+                searchDepth++;
+            }
+            (drainKeys, drainSize) = NativeParallelHashMapExtensions.GetUniqueKeyArray(drainToMinima, Allocator.Temp);
+            for (int i = 0; i < drainSize; i++){
+                PoolKey drainKey = drainKeys[i];
+                if (drainKey.order > 1){
+                    outMap[drainKey.idx] = 1f;
+                }
+                else{
+                    outMap[drainKey.idx] = 0f;
+                }
+                
+            }
+
+        }
+
+        public void SetupCollapse(
+            int resolution,
+            NativeArray<Cardinal> flow_,
+            NativeSlice<float> heightMap_,
+            NativeSlice<float> outMap_
+        ){
             res = new int2(resolution, resolution);
             flow = flow_;
+            heightMap = heightMap_;
+            outMap = outMap_;
+        }
+
+        public void SetupPoolGeneration(
+            int resolution,
+            NativeSlice<float> heightMap_,
+            NativeSlice<float> outMap_
+        ){
+            res = new int2(resolution, resolution);
             heightMap = heightMap_;
             outMap = outMap_;
         }
