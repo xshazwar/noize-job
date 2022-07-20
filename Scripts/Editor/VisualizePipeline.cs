@@ -26,6 +26,7 @@ namespace xshazwar.noize.scripts.editor {
         BasePipeline mPipeline;
         Texture2D texture;
 
+        public int outputTextureSize = 1024;        
         public int resolution = 256;
         public int xpos = 0;
         public int zpos = 0;
@@ -151,6 +152,11 @@ namespace xshazwar.noize.scripts.editor {
         {
             int offset = 0;
             GUILayout.Label("Pipeline", EditorStyles.boldLabel);
+
+            EditorGUI.BeginChangeCheck();
+                outputTextureSize = EditorGUILayout.IntField("PreviewSize:", outputTextureSize);
+            if (EditorGUI.EndChangeCheck()){}
+
             EditorGUI.BeginChangeCheck();
                 resolution = EditorGUILayout.IntField("Resolution:", resolution);
             if (EditorGUI.EndChangeCheck())
@@ -214,7 +220,7 @@ namespace xshazwar.noize.scripts.editor {
             if (texture)
             {
                 EditorGUI.PrefixLabel(new Rect(150, 140 + offset, 50, 15), 0, new GUIContent("Preview:"));
-                EditorGUI.DrawPreviewTexture(new Rect(240, 140 + offset, 512, 512), texture);
+                EditorGUI.DrawPreviewTexture(new Rect(240, 140 + offset, outputTextureSize, outputTextureSize), texture);
             }
 
             if (GUI.Button(new Rect(10, 140 + offset, 100, 30), "Run Pipeline")){

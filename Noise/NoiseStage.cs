@@ -34,7 +34,7 @@ namespace xshazwar.noize.generate {
         [Range(0f, 2f)]
         public float hurst = 0f;
         
-        [Range(.5f, 5f)]
+        [Range(.01f, 5f)]
         public float startingAmplitude = 1f;
         
         [Range(1, 24)]

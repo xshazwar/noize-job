@@ -15,11 +15,9 @@ namespace xshazwar.noize.geologic {
     using Unity.Mathematics;
 
 	[BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
-	public struct ParticlePoolMinimaJob<J> : IJobFor
-        where J : struct, IPoolSuperPosition
-        {
+	public struct ParticlePoolMinimaJob : IJobFor {
         NativeStream.Writer minimaWriter;
-        J poolJob;
+        FlowSuperPosition poolJob;
 
 		public void Execute (int z) => poolJob.CreateSuperPositions(z, minimaWriter);
 
@@ -34,10 +32,10 @@ namespace xshazwar.noize.geologic {
 		)
         {
             
-            var job = new ParticlePoolMinimaJob<J> {
+            var job = new ParticlePoolMinimaJob {
                 minimaWriter = minimaStream.AsWriter()
             };
-            job.poolJob = new J();
+            job.poolJob = new FlowSuperPosition();
 			job.poolJob.SetupCollapse(resolution, flow, heightMap, outMap);
 
             // no temporary allocations, so no need to dispose
@@ -56,27 +54,65 @@ namespace xshazwar.noize.geologic {
             JobHandle dependency
     );
 
+    public struct ParticleWriteMinimas : IJob {
+        [ReadOnly]
+        NativeStream.Reader streamReader;
+        
+        [WriteOnly]
+        NativeList<int> minimas;
+
+        int res;
+
+        // No idea why this doesn't work...
+        // public void Execute () {
+        //     int count = streamReader.RemainingItemCount;
+        //     for(int n = 0; n < count; n ++){
+        //         minimas.Add(streamReader.Read<int>());
+        //         Debug.Log($"added {minimas[n]}");
+        //     }
+        // }
+
+        public void Execute () {
+            for (int index = 0; index < res; index++){
+            int count = streamReader.BeginForEachIndex(index);
+            for(int n = 0; n < count; n ++){
+                minimas.Add(streamReader.Read<int>());
+                // Debug.Log($"added {minimas[n]}");
+            }
+            }
+        }
+
+        public static JobHandle ScheduleRun(
+            int res,
+            NativeList<int> minimas,
+            NativeStream minimaStream,
+            JobHandle dep
+        ){
+            var prereq = new ParticleWriteMinimas {
+                streamReader = minimaStream.AsReader(),
+                minimas = minimas,
+                res = res
+            };
+            return prereq.Schedule(dep);
+        }
+    }
+
 	[BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
-	public struct ParticlePoolCollapseJob<J> : IJobFor
-        where J : struct, IPoolSuperPosition
+	public struct ParticlePoolCollapseJob : IJobParallelForDefer
         {
         
         ProfilerMarker profiler_;
-        
         [ReadOnly]
-        NativeStream.Reader streamReader;
+        NativeList<int> minimas;
         NativeParallelMultiHashMap<int, int>.ParallelWriter boundaryWriterBM;
         NativeParallelMultiHashMap<int, int>.ParallelWriter boundaryWriterMB;
         NativeParallelHashMap<int, int>.ParallelWriter catchmentWriter;
-        J poolJob;
+        FlowSuperPosition poolJob;
 
-		public void Execute (int index) {
-            int count = streamReader.BeginForEachIndex(index);
-            for(int n = 0; n < count; n ++){
-                int minimaIdx = streamReader.Read<int>();
-                poolJob.CollapseMinima(minimaIdx, boundaryWriterBM, boundaryWriterMB, catchmentWriter);
-            }
-            streamReader.EndForEachIndex();
+        public void Execute (int index) {
+            int minimaIdx = minimas[index];
+            Debug.Log($"{index}");
+            poolJob.CollapseMinima(minimaIdx, boundaryWriterBM, boundaryWriterMB, catchmentWriter);
         }
 
 		public static JobHandle ScheduleParallel (
@@ -84,7 +120,7 @@ namespace xshazwar.noize.geologic {
 			NativeSlice<float> heightMap,
             NativeSlice<float> outMap,
             NativeArray<Cardinal> flow,
-            NativeStream minimaStream,
+            NativeList<int> minimas,
             NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
             NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
             NativeParallelHashMap<int, int> catchmentMap,
@@ -93,19 +129,18 @@ namespace xshazwar.noize.geologic {
 		)
         {
             
-            var job = new ParticlePoolCollapseJob<J> {
-                streamReader = minimaStream.AsReader(),
+            var job = new ParticlePoolCollapseJob {
+                minimas = minimas,
                 boundaryWriterBM = boundaryMapMemberToMinima.AsParallelWriter(),
                 boundaryWriterMB = boundaryMapMinimaToMembers.AsParallelWriter(),
                 catchmentWriter = catchmentMap.AsParallelWriter()
             };
-            job.poolJob = new J();
+            job.poolJob = new FlowSuperPosition();
             ProfilerMarker marker_ = new ProfilerMarker("PoolColapse");
             job.profiler_ = marker_;
 			job.poolJob.SetupCollapse(resolution, flow, heightMap, outMap);
-
-			return job.ScheduleParallel(
-                resolution, 1, dependency
+            return job.Schedule<ParticlePoolCollapseJob, int>(
+                    minimas, 1, dependency
 			);
 		}
 	}
@@ -114,7 +149,7 @@ namespace xshazwar.noize.geologic {
             NativeSlice<float> heightMap,
             NativeSlice<float> outMap,
             NativeArray<Cardinal> flow,
-            NativeStream minimaStream,
+            NativeList<int> minimas,
             NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
             NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
             NativeParallelHashMap<int, int> catchmentMap,
@@ -123,17 +158,17 @@ namespace xshazwar.noize.geologic {
     );
 
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
-	public struct PoolCreationJob<J> : IJob
-        where J : struct, IPoolSuperPosition
+	public struct DrainSolvingJob : IJob
         {
-        // ProfilerMarker profiler;
+        ProfilerMarker profiler;
         NativeParallelMultiHashMap<int, int> boundaryBM;
         NativeParallelMultiHashMap<int, int> boundaryMB;
         NativeParallelHashMap<int, int> catchment;
-        J poolJob;
+        UnsafeParallelHashMap<PoolKey, Pool> pools;
+        FlowSuperPosition poolJob;
 
 		public void Execute () {
-            poolJob.SolvePoolHeirarchy(boundaryBM, boundaryMB, catchment);
+            poolJob.SolveDrainHeirarchy(boundaryBM, boundaryMB, catchment, pools, profiler);
         }
 
 		public static JobHandle Schedule (
@@ -143,30 +178,33 @@ namespace xshazwar.noize.geologic {
             NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
             NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
             NativeParallelHashMap<int, int> catchmentMap,
+            UnsafeParallelHashMap<PoolKey, Pool> pools,
             int resolution,
             JobHandle dependency
 		)
         {
-            var job = new PoolCreationJob<J> {
+            var job = new DrainSolvingJob {
                 boundaryBM = boundaryMapMemberToMinima,
                 boundaryMB = boundaryMapMinimaToMembers,
-                catchment = catchmentMap
+                catchment = catchmentMap,
+                pools = pools
             };
-            job.poolJob = new J();
-            // ProfilerMarker marker_ = new ProfilerMarker("PoolColapse");
-            // job.profiler = marker_;
+            job.poolJob = new FlowSuperPosition();
+            ProfilerMarker marker_ = new ProfilerMarker("PoolColapse");
+            job.profiler = marker_;
 			job.poolJob.SetupPoolGeneration(resolution, heightMap, outMap);
 
 			return job.Schedule(dependency);
 		}
 	}
 
-    public delegate JobHandle PoolCreationJobDelegate(
+    public delegate JobHandle DrainSolvingJobDelegate(
             NativeSlice<float> heightMap,
             NativeSlice<float> outMap,
             NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
             NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
             NativeParallelHashMap<int, int> catchmentMap,
+            UnsafeParallelHashMap<PoolKey, Pool> pools,
             int resolution,
             JobHandle dependency
     );

@@ -1,4 +1,5 @@
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using UnityEngine;
 
@@ -51,7 +52,9 @@ namespace xshazwar.noize.geologic {
         void SolvePoolHeirarchy(
             NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
             NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
-            NativeParallelHashMap<int, int> catchmentMap
+            NativeParallelHashMap<int, int> catchmentMap,
+            UnsafeParallelHashMap<PoolKey, Pool> pools,
+            ProfilerMarker? profiler = null
         );
         void SetupCollapse(
             int resolution,
