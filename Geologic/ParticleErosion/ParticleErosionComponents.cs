@@ -153,7 +153,7 @@ namespace xshazwar.noize.geologic {
                 if (idxN < 0){
                     // off the map
                 }
-                else if (!basin.Contains(idxN) && frontier.ContainsKey(idxN)){
+                else if (frontier.ContainsKey(idxN) && !basin.Contains(idxN)){
                     inverseIdx = d + reciprocal;
                     // h -> n = neighbors[n] || Cardinal[n]
                     // n -> h = neighbors[n + reciprocal] || Cardinal[n + reciprocal]
@@ -177,13 +177,14 @@ namespace xshazwar.noize.geologic {
             bool foundNewFrontier = false;
             while(frontierIndices.MoveNext()){
                 int idxCandidate = frontierIndices.Current;
-                if(!basin.Contains(idxCandidate) && frontier[idxCandidate] == Cardinal.X){
-                    basin.Add(idxCandidate);
-                    foundNewFrontier = UpdateFrontier(
-                        getPos(idxCandidate),
-                        ref frontier,
-                        ref basin
-                        ) || foundNewFrontier;
+                if(frontier[idxCandidate] == Cardinal.X ){
+                    if(basin.Add(idxCandidate)){
+                        foundNewFrontier = UpdateFrontier(
+                            getPos(idxCandidate),
+                            ref frontier,
+                            ref basin
+                            ) || foundNewFrontier;
+                        }
                 }
             }
             return foundNewFrontier;
@@ -268,6 +269,8 @@ namespace xshazwar.noize.geologic {
             UnsafeParallelHashSet<int> trash = new UnsafeParallelHashSet<int>((int)(res.x ), Allocator.Temp);
             UnsafeParallelHashMap<int, Cardinal> frontier = new UnsafeParallelHashMap<int, Cardinal>((int)(res.x ), Allocator.Temp);
         
+            int iterCount = 0;
+            int frontierIterCount = 0;
             bool basinComplete = false;
             // by definition the minima is in the basin.
             basin.Add(minimaIdx);
@@ -277,21 +280,31 @@ namespace xshazwar.noize.geologic {
             UpdateFrontierReferences(ref frontierEnumerator, ref frontierIdx, ref basin);
             UnsafeParallelHashSet<int>.Enumerator frontierIdxIter = frontierIdx.GetEnumerator();
             while(!basinComplete){
+                frontierIterCount = 0;
+                profiler?.Begin();
                 frontierIdxIter.Reset();
                 bool collapsed = false;
                 while(frontierIdxIter.MoveNext()){
+                    frontierIterCount ++;
                     int idxCandidate = frontierIdxIter.Current;
                     collapsed = CollapseFrontierState(getPos(idxCandidate), ref frontier, ref basin) || collapsed;               
                 }
-                
+                // Debug.Log($"{collapsed}");
+                // Debug.Log($"{frontierIterCount}");
                 frontierIdxIter.Reset();
+                profiler?.End();
+                profiler?.Begin();
                 basinComplete = !MoveToBasin(ref frontier, ref basin, ref frontierIdxIter);
-                
+                profiler?.End();
                 profiler?.Begin();
                 frontierEnumerator.Reset();
+                // DebugCollapseState(ref basin, ref frontier, ref frontierIdx, ref trash, (iterCount * 10) + 1);
                 UpdateFrontierReferences(ref frontierEnumerator, ref frontierIdx, ref basin);
+                // DebugCollapseState(ref basin, ref frontier, ref frontierIdx, ref trash, (iterCount * 10) + 2);
                 PruneFrontierMap(ref frontierEnumerator, ref frontier, ref frontierIdx, ref trash);
+                // DebugCollapseState(ref basin, ref frontier, ref frontierIdx, ref trash, (iterCount * 10) + 3);
                 profiler?.End();
+                iterCount ++;
             }
 
             frontierEnumerator.Reset();
@@ -313,6 +326,22 @@ namespace xshazwar.noize.geologic {
             trash.Dispose();
             frontierIdx.Dispose();
         }
+    
+    public void DebugCollapseState(
+        ref UnsafeParallelHashSet<int> basin,
+        ref UnsafeParallelHashMap<int, Cardinal> frontier,
+        ref UnsafeParallelHashSet<int> frontierIdx,
+        ref UnsafeParallelHashSet<int> trash,
+        int tag
+    ){
+        Debug.Log($"------- {tag}");
+        Debug.Log($"basin {basin.Count()}");
+        Debug.Log($"frontier {frontier.Count()}");
+        Debug.Log($"frontierIdx {frontierIdx.Count()}");
+        Debug.Log($"trash {trash.Count()}");
+        
+
+    }
 
 /*
 // 
@@ -514,12 +543,13 @@ namespace xshazwar.noize.geologic {
             NativeParallelMultiHashMap<int, int> boundary_BM,
             NativeParallelMultiHashMap<int, int> boundary_MB,
             NativeParallelHashMap<int, int> catchment,
-            UnsafeParallelHashMap<PoolKey, Pool> pools,
+            ref NativeParallelHashMap<PoolKey, Pool> pools,
+            NativeList<PoolKey> drainKeyOut,
+            ref NativeParallelMultiHashMap<PoolKey, int> drainToMinima,
             ProfilerMarker? profiler = null
         ){
             var (mnIdxs, mnSize) = NativeParallelHashMapExtensions.GetUniqueKeyArray(boundary_MB, Allocator.Temp);
             // drainToMinima [idx] -> minima
-            NativeParallelMultiHashMap<PoolKey, int> drainToMinima = new NativeParallelMultiHashMap<PoolKey, int>(mnSize, Allocator.Temp);
             NativeParallelHashMap<PoolKey, int> minimaToDrain = new NativeParallelHashMap<PoolKey, int>(mnSize, Allocator.Temp);
             
             for(int i = 0; i < mnSize; i++){
@@ -531,47 +561,16 @@ namespace xshazwar.noize.geologic {
             int searchDepth = 2;
             bool reduced = false;
             while(searchDepth < POOLSEARCHDEPTHI){
-                // Debug.LogWarning($"depth {searchDepth}");
                 reduced = ReduceDrains(searchDepth, ref drainToMinima, ref minimaToDrain, ref boundary_MB, ref boundary_BM, ref sharedBoundary);
                 if (!reduced) break;
                 searchDepth += 1;
             }
-            // // TODO split into new parallel stage?
-            // profiler?.Begin();
             var catchIter = catchment.GetEnumerator();
             NativeList<float> members = new NativeList<float>(res.x, Allocator.Temp);
-            PoolKey drainKey = new PoolKey();
             var (drainKeys, drainKeySize) = NativeParallelHashMapExtensions.GetUniqueKeyArray(drainToMinima, Allocator.Temp);
-            pools = new UnsafeParallelHashMap<PoolKey, Pool>(drainKeySize, Allocator.Persistent);
-            for(int i = 0; i < drainKeySize; i ++){
-                CreatePoolFromDrain(drainKeys[i], ref drainToMinima, ref catchment, ref boundary_MB, ref pools);
+            for(int i = 0; i < drainKeySize; i++){
+                drainKeyOut.Add(drainKeys[i]);
             }
-            LinkPoolHeirarchy(ref drainToMinima, ref pools);
-            // profiler?.End();
-
-            // Split into vis stages
-            profiler?.Begin();
-            ParticleDebugHelper draw = new ParticleDebugHelper();
-            draw.Debug__PaintPoolsStatic(ref outMap, ref heightMap, ref pools, catchIter);
-            draw.Debug__PaintMinimas(ref outMap, ref mnIdxs, 0f);
-            draw.Debug__PaintStaticBoundaries(ref outMap, ref boundary_MB, 0f);
-            draw.Debug__PaintDrains(ref outMap, ref pools, 1f);
-            draw.Debug__InfoPools(ref pools);
-            
-            // draw.Debug__PaintPools(ref outMap, ref heightMap, ref pools, catchIter);
-            // draw.Debug__PaintBoundaries(ref outMap, ref heightMap, ref pools, ref boundary_BM);
-
-            boundary_MB.Clear();
-            boundary_BM.Clear();
-            catchment.Clear();
-            pools.Clear();
-            profiler?.End();
-            // for(int i = 0; i < mnSize; i++){
-            //     outMap[mnIdxs[i]] = 1f;     
-            // }
-            // Debug.LogError("pools done");
-            // int poolCount = pools.Count();
-            // Debug.LogError($"{poolCount} pools");
         }
 
         public void CollectSharedBoundary(
@@ -589,7 +588,6 @@ namespace xshazwar.noize.geologic {
                 while(boundarIter.MoveNext()){
                     allBoundaries.Add(boundarIter.Current, minimaSet[i]);
                 }
-                // boundarIter.Reset();
             }
             var (minimaBoundaries, mbSize) = NativeParallelHashMapExtensions.GetUniqueKeyArray(allBoundaries, Allocator.Temp);
             for(int i = 0; i < mbSize; i++){
@@ -641,13 +639,19 @@ namespace xshazwar.noize.geologic {
             NativeParallelHashMap<int, int>.Enumerator catchmentMap,
             ref NativeParallelMultiHashMap<int, int> boundary_MB,
             ref NativeList<float> members,
-            ref UnsafeParallelHashMap<PoolKey, Pool> pools
+            ref NativeParallelHashMap<PoolKey, Pool>.ParallelWriter pools,
+            ProfilerMarker? profiler = null
         ){
             float drainHeight = heightMap[drainIdx];
             
+            profiler?.Begin();
             CollectPoolMembers(minimaSet, poolOrder, drainHeight, catchmentMap, ref members);
+            profiler?.End();
+            profiler?.Begin();
             CollectMembersSharedInternalBorder(minimaSet, drainHeight, ref boundary_MB, ref members);
+            profiler?.End();
             
+            profiler?.Begin();
             int referenceMinima = 0;
             float refMinHeight = float.MaxValue;
 
@@ -667,14 +671,15 @@ namespace xshazwar.noize.geologic {
             };
             // This SolveUpstreamPoolPrecidence is quite fast and not parallel safe
             // so it's going to get done after in a different job even though we could do it here
-            pools.Add(key, pool);
+            pools.TryAdd(key, pool);
+            profiler?.End();
         }
 
         public void SolveUpstreamPoolPrecidence(
             PoolKey key,
             int poolOrder,
             ref NativeList<int> minimaSet,
-            ref UnsafeParallelHashMap<PoolKey, Pool> pools
+            ref NativeParallelHashMap<PoolKey, Pool> pools
         ){
             PoolKey probe = new PoolKey();
             Pool poolProbe = new Pool();
@@ -725,23 +730,28 @@ namespace xshazwar.noize.geologic {
 
 /*
 // 
-// 
+//      Pool Creation Job
 // 
 */
+
         // Parallel
         public void CreatePoolFromDrain(
             PoolKey drainKey,
             ref NativeParallelMultiHashMap<PoolKey, int> drainToMinima,
             ref NativeParallelHashMap<int, int> catchment,
             ref NativeParallelMultiHashMap<int, int> boundary_MB,
-            ref UnsafeParallelHashMap<PoolKey, Pool> pools
+            ref NativeParallelHashMap<PoolKey, Pool>.ParallelWriter pools,
+            ProfilerMarker? profiler = null
         ){
-
+            profiler?.Begin();
             var catchIter = catchment.GetEnumerator();
             NativeList<int> minimas = new NativeList<int>(32, Allocator.Temp);
             NativeList<float> members = new NativeList<float>(res.x, Allocator.Temp);
+            profiler?.End();
+            profiler?.Begin();
             AddUniquePoolValues(drainKey, ref drainToMinima, ref minimas);
-            CreatePool(ref minimas, (int) drainKey.order, drainKey.idx, catchIter, ref boundary_MB, ref members, ref pools);
+            profiler?.End();
+            CreatePool(ref minimas, (int) drainKey.order, drainKey.idx, catchIter, ref boundary_MB, ref members, ref pools, profiler);
 
             members.Dispose();
             minimas.Dispose();
@@ -750,7 +760,7 @@ namespace xshazwar.noize.geologic {
         // Single
         public void LinkPoolHeirarchy(
             ref NativeParallelMultiHashMap<PoolKey, int> drainToMinima,
-            ref UnsafeParallelHashMap<PoolKey, Pool> pools
+            ref NativeParallelHashMap<PoolKey, Pool> pools
         ){
             Pool referencePool;
             PoolKey referenceKey;
@@ -766,6 +776,32 @@ namespace xshazwar.noize.geologic {
                 SolveUpstreamPoolPrecidence(referenceKey, referenceKey.order, ref minimas, ref pools);
                 minimas.Clear();
             }
+        }
+
+        public void DebugDrawAndCleanUp(
+            NativeParallelMultiHashMap<int, int> boundary_BM,
+            NativeParallelMultiHashMap<int, int> boundary_MB,
+            NativeParallelHashMap<int, int> catchment,
+            NativeParallelHashMap<PoolKey, Pool> pools,
+            bool paintFor3D = false,
+            bool cleanUp = true
+        ){
+            // outmap / heightmap / res from setup required
+
+            var catchIter = catchment.GetEnumerator();
+            ParticleDebugHelper draw = new ParticleDebugHelper();
+            
+            if (!paintFor3D){
+                var (mnIdxs, mnSize) = NativeParallelHashMapExtensions.GetUniqueKeyArray(boundary_MB, Allocator.Temp);
+                draw.Debug__PaintPoolsStatic(ref outMap, ref heightMap, ref pools, catchIter);
+                draw.Debug__PaintMinimas(ref outMap, ref mnIdxs, 0f);
+                draw.Debug__PaintStaticBoundaries(ref outMap, ref boundary_MB, 0f);
+                draw.Debug__PaintDrains(ref outMap, ref pools, 1f);
+                draw.Debug__InfoPools(ref pools);
+            }else{
+                draw.Debug__PaintPools(ref outMap, ref heightMap, ref pools, catchIter);
+                draw.Debug__PaintBoundaries(ref outMap, ref heightMap, ref pools, ref boundary_BM);
+            }         
         }
 
     }

@@ -123,6 +123,34 @@ namespace xshazwar.noize.geologic {
         }
     }
 
+    public static class CardinalExtension {
+
+        public static readonly int[] NIBBLE_LU = new int[] {
+            0, 1, 1, 2, 1, 2, 2, 3, 
+            1, 2, 2, 3, 2, 3, 3, 4
+        };
+
+        public static readonly Cardinal WE = (Cardinal.E | Cardinal.W);
+        public static readonly Cardinal NS = Cardinal.N | Cardinal.S;
+        public static readonly Cardinal D1 = Cardinal.NE | Cardinal.SW;
+        public static readonly Cardinal D2 = Cardinal.NW | Cardinal.SE;
+        
+        public static int HammingW(this Cardinal b){
+            return NIBBLE_LU[((int) b) & 0x0F] + NIBBLE_LU[((int) b) >> 4];
+        }
+
+        public static bool StraightLine(this Cardinal b){
+            return ((Cardinal)(b | WE)) == b || (((Cardinal) b | NS) == b);
+        }
+
+        public static bool Diagnal(this Cardinal b){
+            return ((Cardinal)(b | D1)) == b || (((Cardinal) b | D2) == b);
+        }
+
+    
+    }
+    
+
     public enum Cardinal : byte {
         // Cardinal[i] where i < 8 === (Cardinal)( ( ((byte) 1) << i ) )
         
@@ -138,6 +166,7 @@ namespace xshazwar.noize.geologic {
         // convenience
         X  = 0b_00000000,
         A  = 0b_11111111
+
     }
 
 }

@@ -15,6 +15,7 @@ namespace xshazwar.noize.geologic {
     [CreateAssetMenu(fileName = "ParticleErosion", menuName = "Noize/Geologic/ParticleErosion", order = 2)]
     public class ParticleErosionStage: PipelineStage {
 
+        public bool Draw2d = false;
 
 
         static ParticlePoolMinimaJobDelegate minimaJob = ParticlePoolMinimaJob.ScheduleParallel;
@@ -34,9 +35,9 @@ namespace xshazwar.noize.geologic {
         
         [NativeDisableContainerSafetyRestriction]
         private NativeList<int> minimas;
-        private UnsafeList<PoolKey> poolKeys;
-        private UnsafeParallelHashMap<PoolKey, Pool> pools;
-
+        private NativeList<PoolKey> drainKeys;
+        private NativeParallelHashMap<PoolKey, Pool> pools;
+        private NativeParallelMultiHashMap<PoolKey, int> drainToMinima;
         private int currentSize = 0;
         public override void ResizeNativeContainers(int size){
             // Resize containers
@@ -47,19 +48,27 @@ namespace xshazwar.noize.geologic {
                 boundaryMapMemberToMinima.Dispose();
                 boundaryMapMinimaToMembers.Dispose();
                 catchmentMap.Dispose();
+                pools.Dispose();
+                drainKeys.Dispose();
+                drainToMinima.Dispose();
+                minimas.Dispose();
             }
             currentSize = size;
             tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             flow = new NativeArray<Cardinal>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             minimas = new NativeList<int>(32, Allocator.Persistent);
+            drainKeys = new NativeList<PoolKey>(size, Allocator.Persistent);
+            drainToMinima = new NativeParallelMultiHashMap<PoolKey, int>(dataLength, Allocator.Persistent);
             boundaryMapMemberToMinima = new NativeParallelMultiHashMap<int, int>(size, Allocator.Persistent);
             boundaryMapMinimaToMembers = new NativeParallelMultiHashMap<int, int>(size, Allocator.Persistent);
             catchmentMap = new NativeParallelHashMap<int, int>(dataLength, Allocator.Persistent);
+            pools = new NativeParallelHashMap<PoolKey, Pool>(dataLength, Allocator.Persistent);
         }
 
         public override void Schedule(PipelineWorkItem requirements, JobHandle dependency ){
             CheckRequirements<GeneratorData>(requirements);
             GeneratorData d = (GeneratorData) requirements.data;
+            Clean();
             stream = new NativeStream(currentSize, Allocator.Persistent);
             JobHandle first = minimaJob(
                 d.data,
@@ -89,11 +98,34 @@ namespace xshazwar.noize.geologic {
                 boundaryMapMinimaToMembers,
                 catchmentMap,
                 pools,
+                drainKeys,
+                drainToMinima,
                 d.resolution,
                 second
             );
-            jobHandle = TileHelpers.SWAP_RWTILE(d.data, tmp, fourth);
-            // jobHandle = TileHelpers.SWAP_RWTILE(d.data, tmp, first);
+            JobHandle fifth = PoolCreationJob.ScheduleParallel(
+                d.data, tmp, drainKeys, drainToMinima, catchmentMap, boundaryMapMinimaToMembers, pools, d.resolution, fourth);
+            JobHandle sixth = SolvePoolHeirarchyJob.ScheduleRun(drainToMinima, pools, fifth);
+            JobHandle seventh = DebugDrawAndCleanUpJob.ScheduleRun(d.data, tmp, boundaryMapMemberToMinima, boundaryMapMinimaToMembers, catchmentMap, pools, d.resolution, sixth, !Draw2d);
+            jobHandle = TileHelpers.SWAP_RWTILE(d.data, tmp, seventh);
+        }
+
+        public void Clean(){
+            if(tmp.IsCreated){
+                minimas.Clear();
+                boundaryMapMemberToMinima.Clear();
+                boundaryMapMinimaToMembers.Clear();
+                catchmentMap.Clear();
+            }
+            if(pools.IsCreated){
+                pools.Clear();
+            }
+            if(drainKeys.IsCreated){
+                drainKeys.Clear();
+            }
+            if(drainToMinima.IsCreated){
+                drainToMinima.Clear();
+            }
         }
 
         public override void OnDestroy()
@@ -101,13 +133,13 @@ namespace xshazwar.noize.geologic {
             if(tmp.IsCreated){
                 tmp.Dispose();
                 flow.Dispose();
-                minimas.Dispose();
                 boundaryMapMemberToMinima.Dispose();
                 boundaryMapMinimaToMembers.Dispose();
                 catchmentMap.Dispose();
-            }
-            if(pools.IsCreated){
                 pools.Dispose();
+                drainKeys.Dispose();
+                drainToMinima.Dispose();
+                minimas.Dispose();
             }
         }
     }

@@ -111,7 +111,6 @@ namespace xshazwar.noize.geologic {
 
         public void Execute (int index) {
             int minimaIdx = minimas[index];
-            Debug.Log($"{index}");
             poolJob.CollapseMinima(minimaIdx, boundaryWriterBM, boundaryWriterMB, catchmentWriter);
         }
 
@@ -139,6 +138,7 @@ namespace xshazwar.noize.geologic {
             ProfilerMarker marker_ = new ProfilerMarker("PoolColapse");
             job.profiler_ = marker_;
 			job.poolJob.SetupCollapse(resolution, flow, heightMap, outMap);
+            // dynamically picks length based on minima count
             return job.Schedule<ParticlePoolCollapseJob, int>(
                     minimas, 1, dependency
 			);
@@ -164,11 +164,13 @@ namespace xshazwar.noize.geologic {
         NativeParallelMultiHashMap<int, int> boundaryBM;
         NativeParallelMultiHashMap<int, int> boundaryMB;
         NativeParallelHashMap<int, int> catchment;
-        UnsafeParallelHashMap<PoolKey, Pool> pools;
+        NativeParallelHashMap<PoolKey, Pool> pools;
+        NativeList<PoolKey> drainKeys;
+        NativeParallelMultiHashMap<PoolKey, int> drainToMinima;
         FlowSuperPosition poolJob;
 
 		public void Execute () {
-            poolJob.SolveDrainHeirarchy(boundaryBM, boundaryMB, catchment, pools, profiler);
+            poolJob.SolveDrainHeirarchy(boundaryBM, boundaryMB, catchment, ref pools, drainKeys, ref drainToMinima, profiler);
         }
 
 		public static JobHandle Schedule (
@@ -178,7 +180,9 @@ namespace xshazwar.noize.geologic {
             NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
             NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
             NativeParallelHashMap<int, int> catchmentMap,
-            UnsafeParallelHashMap<PoolKey, Pool> pools,
+            NativeParallelHashMap<PoolKey, Pool> pools,
+            NativeList<PoolKey> drainKeys,
+            NativeParallelMultiHashMap<PoolKey, int> drainToMinima,
             int resolution,
             JobHandle dependency
 		)
@@ -187,11 +191,12 @@ namespace xshazwar.noize.geologic {
                 boundaryBM = boundaryMapMemberToMinima,
                 boundaryMB = boundaryMapMinimaToMembers,
                 catchment = catchmentMap,
-                pools = pools
+                pools = pools,
+                drainKeys = drainKeys,
+                drainToMinima = drainToMinima,
+                poolJob = new FlowSuperPosition(),
+                profiler = new ProfilerMarker("PoolColapse")
             };
-            job.poolJob = new FlowSuperPosition();
-            ProfilerMarker marker_ = new ProfilerMarker("PoolColapse");
-            job.profiler = marker_;
 			job.poolJob.SetupPoolGeneration(resolution, heightMap, outMap);
 
 			return job.Schedule(dependency);
@@ -204,9 +209,146 @@ namespace xshazwar.noize.geologic {
             NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
             NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
             NativeParallelHashMap<int, int> catchmentMap,
-            UnsafeParallelHashMap<PoolKey, Pool> pools,
+            NativeParallelHashMap<PoolKey, Pool> pools,
+            NativeList<PoolKey> drainKeys,
+            NativeParallelMultiHashMap<PoolKey, int> drainToMinima,
             int resolution,
             JobHandle dependency
     );
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct PoolCreationJob : IJobParallelForDefer {
+
+        ProfilerMarker profiler;
+        int res;
+
+        [ReadOnly]
+        NativeSlice<float> heightMap;
+        [ReadOnly]
+        NativeSlice<float> outMap;
+        
+        [ReadOnly]
+        NativeArray<PoolKey> drainKeys;
+        
+        [ReadOnly]
+        NativeParallelMultiHashMap<PoolKey, int> drainToMinima;
+        
+        [ReadOnly]
+        NativeParallelHashMap<int, int> catchment;
+        
+        [ReadOnly]
+        NativeParallelMultiHashMap<int, int> boundary_MB;
+        
+        [WriteOnly]
+        NativeParallelHashMap<PoolKey, Pool>.ParallelWriter pools;
+        FlowSuperPosition poolJob;
+
+        public void Execute(int i){
+            poolJob.CreatePoolFromDrain(drainKeys[i], ref drainToMinima, ref catchment, ref boundary_MB, ref pools, profiler);
+        }
+
+        public static JobHandle ScheduleParallel(
+            NativeSlice<float> heightMap,
+            NativeSlice<float> outMap,
+            NativeList<PoolKey> drainKeys,
+            NativeParallelMultiHashMap<PoolKey, int> drainToMinima,
+            NativeParallelHashMap<int, int> catchment,
+            NativeParallelMultiHashMap<int, int> boundary_MB,
+            NativeParallelHashMap<PoolKey, Pool> pools,
+            int res,
+            JobHandle deps
+        ){
+            var job = new PoolCreationJob {
+                res = res,
+                heightMap = heightMap,
+                outMap = outMap,
+                drainKeys = drainKeys.AsDeferredJobArray(),
+                drainToMinima = drainToMinima,
+                catchment = catchment,
+                boundary_MB = boundary_MB,
+                pools = pools.AsParallelWriter(),
+                poolJob = new FlowSuperPosition(),
+                profiler = new ProfilerMarker("probe")
+            };
+            job.poolJob.SetupPoolGeneration(res, heightMap, outMap);
+
+            return IJobParallelForDeferExtensions.Schedule<PoolCreationJob, PoolKey>(job, drainKeys, 1, deps);
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct SolvePoolHeirarchyJob: IJob {
+
+        NativeParallelMultiHashMap<PoolKey, int> drainToMinima;
+        NativeParallelHashMap<PoolKey, Pool> pools;
+        FlowSuperPosition poolJob;
+
+        public void Execute(){
+            poolJob.LinkPoolHeirarchy(ref drainToMinima, ref pools);
+        }
+
+        public static JobHandle ScheduleRun(
+            NativeParallelMultiHashMap<PoolKey, int> drainToMinima,
+            NativeParallelHashMap<PoolKey, Pool> pools,
+            JobHandle deps
+        ){
+            var job = new SolvePoolHeirarchyJob {
+                drainToMinima = drainToMinima,
+                pools = pools,
+                poolJob = new FlowSuperPosition()
+            };
+            return job.Schedule(deps);
+        }
+
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct DebugDrawAndCleanUpJob: IJob {
+
+        int res;
+        NativeSlice<float> heightMap;
+        NativeSlice<float> outMap;
+        NativeParallelMultiHashMap<int, int> boundary_BM;
+        NativeParallelMultiHashMap<int, int> boundary_MB;
+        NativeParallelHashMap<int, int> catchment;
+        NativeParallelHashMap<PoolKey, Pool> pools;
+        bool paintFor3D;
+        bool cleanUp;
+        FlowSuperPosition poolJob;
+
+        public void Execute(){
+            poolJob.DebugDrawAndCleanUp(boundary_BM, boundary_MB, catchment, pools, paintFor3D, cleanUp);
+        }
+
+        public static JobHandle ScheduleRun(
+            NativeSlice<float> heightMap,
+            NativeSlice<float> outMap,
+            NativeParallelMultiHashMap<int, int> boundary_BM,
+            NativeParallelMultiHashMap<int, int> boundary_MB,
+            NativeParallelHashMap<int, int> catchment,
+            NativeParallelHashMap<PoolKey, Pool> pools,
+            int res,
+            JobHandle deps,
+            bool paintFor3D = false,
+            bool cleanUp = true
+        ){
+            var job = new DebugDrawAndCleanUpJob {
+                heightMap = heightMap,
+                outMap = outMap,
+                boundary_BM = boundary_BM,
+                boundary_MB = boundary_MB,
+                catchment = catchment,
+                pools = pools,
+                paintFor3D = paintFor3D,
+                cleanUp = cleanUp,
+                res = res,
+                poolJob = new FlowSuperPosition()
+            };
+            job.poolJob.SetupPoolGeneration(res, heightMap, outMap);
+
+            return job.Schedule(deps);
+
+        }
+    }
 
 }

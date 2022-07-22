@@ -36,7 +36,7 @@ namespace xshazwar.noize.geologic {
         public void Debug__PaintPools(
             ref NativeSlice<float> outMap,
             ref NativeSlice<float> heightMap,
-            ref UnsafeParallelHashMap<PoolKey, Pool> pools,
+            ref NativeParallelHashMap<PoolKey, Pool> pools,
             NativeParallelHashMap<int, int>.Enumerator catchmentMap
         ){
             PoolKey key = new PoolKey();
@@ -78,7 +78,7 @@ namespace xshazwar.noize.geologic {
         public void Debug__PaintPoolsStatic(
             ref NativeSlice<float> outMap,
             ref NativeSlice<float> heightMap,
-            ref UnsafeParallelHashMap<PoolKey, Pool> pools,
+            ref NativeParallelHashMap<PoolKey, Pool> pools,
             NativeParallelHashMap<int, int>.Enumerator catchmentMap
         ){
             PoolKey key = new PoolKey();
@@ -120,7 +120,7 @@ namespace xshazwar.noize.geologic {
         public void Debug__PaintBoundaries(
             ref NativeSlice<float> outMap,
             ref NativeSlice<float> heightMap,
-            ref UnsafeParallelHashMap<PoolKey, Pool> pools,
+            ref NativeParallelHashMap<PoolKey, Pool> pools,
             ref NativeParallelMultiHashMap<int, int> boundary_BM
         ){
             int boundaryIdx = 0;
@@ -154,7 +154,7 @@ namespace xshazwar.noize.geologic {
             }
         }
 
-        public void Debug__PaintDrains(ref NativeSlice<float> outMap, ref UnsafeParallelHashMap<PoolKey, Pool> pools, float value){
+        public void Debug__PaintDrains(ref NativeSlice<float> outMap, ref NativeParallelHashMap<PoolKey, Pool> pools, float value){
             var poolKeys = pools.GetKeyArray(Allocator.Temp);
             poolKeys.Sort();
             PoolKey k;
@@ -173,7 +173,7 @@ namespace xshazwar.noize.geologic {
 
         
 
-        public void Debug__InfoPools(ref UnsafeParallelHashMap<PoolKey, Pool> pools){
+        public void Debug__InfoPools(ref NativeParallelHashMap<PoolKey, Pool> pools){
             // var poolKeys = pools.GetKeyArray(Allocator.Temp);
             // poolKeys.Sort();
             // Pool pool;
