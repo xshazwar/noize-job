@@ -11,47 +11,97 @@ namespace xshazwar.noize.pipeline {
 
     public class PipelineStateManager : MonoBehaviour { 
 
-        // key -> capacity of buffer of Type T (currently fixed as float)
-        private Dictionary<int, PipelineState<float>> states;
+        private Dictionary<Type, dynamic> states;
 
-        public NativeSlice<float>? GetReadBuffer(int size, string key){
-            if (!BufferExists(size, key)){
-                return null;
-            }
-            return new NativeSlice<float>(GetBuffer(size, key));
+        private void InitLinearState<V, T>() where V: unmanaged, IEquatable<V> {
+            states[typeof(T)] = ConstraintsLinear<V>.GetBufferManager<T>();
         }
 
-        public NativeSlice<float> GetWriteBuffer(int size, string key){
-            return new NativeSlice<float>(GetBuffer(size, key));
-        }
-        
-        private NativeArray<float> GetBuffer(int size, string key) {
-            if (states == null){
-                states = new Dictionary<int, PipelineState<float>>();
-            }
-            if (!states.ContainsKey(size)){
-                states[size] = new PipelineState<float>(size);
-            }
-            return states[size].GetBuffer(key);
+        private void InitKVState<K, V, T>() where K: struct, IEquatable<K> where V : struct {
+            states[typeof(T)] = ConstraintsKeyValue<K, V>.GetBufferManager<T>();
         }
 
-        private bool BufferExists(int size, string key){
-            if (!states.ContainsKey(size)){
+/*
+|
+|      BUFFERS
+|
+*/
+
+        // request a buffer by type and initial allocation like:
+        // GetBuffer<float, NativeList<float>>("256_waterMap.001x001z", 256*256);
+
+        public T GetBuffer<V, T> (string name, int size)  where V: unmanaged, IEquatable<V> where T: struct {
+            if(states == null){
+                states = new Dictionary<Type, dynamic>();
+            }
+            if (ConstraintsLinear<V>.SUPPORTED_TYPES.Contains(typeof(T))){
+                if(!states.ContainsKey(typeof(T))){
+                    Debug.Log($"creating new state manager for {typeof(T)}");
+                    InitLinearState<V, T>();
+                }
+                IManageBuffer<T> manager = states[typeof(T)];
+                return (T) ((IManageBuffer<T>) states[typeof(T)]).GetBuffer(name, size);
+            }
+            throw new ArgumentException("type not supported");
+        }
+
+        public T GetBuffer<K, V, T> (string name, int size)  where K: struct, IEquatable<K> where V : struct {
+            if(states == null){
+                states = new Dictionary<Type, dynamic>();
+            }
+            if (ConstraintsKeyValue<K, V>.SUPPORTED_TYPES.Contains(typeof(T))){
+                if(!states.ContainsKey(typeof(T))){
+                    Debug.Log($"creating new state manager for {typeof(T)}");
+                    InitKVState<K, V, T>();
+                }
+                IManageBuffer<T> manager = states[typeof(T)];
+                return (T) ((IManageBuffer<T>) states[typeof(T)]).GetBuffer(name, size);
+            }
+            throw new ArgumentException("type not supported");
+        }
+
+        public bool ReleaseBuffer<T>(string name){
+            if(states == null || !states.ContainsKey(typeof(T))){
                 return false;
             }
-            return states[size].BufferExists(key);
+            return ((IManageBuffer<T>) states[typeof(T)]).ReleaseBuffer(name);
         }
 
-        public void ReleaseBuffer(int size, string key){
-            try{
-                states[size].ReleaseBuffer(key);
-            } catch (NullReferenceException ner){
-                Debug.LogError($"Could not release {key}: {ner}, {size} missing?");
+/*
+|
+|      CALLBACKS
+|
+*/
+
+        // Since we're using a single point for all long lived native collections, we likely will be using them in multiple pipes
+        // which might want to re-run when one of the dependencies changes
+
+        public bool RegisterCallback<T>(string key, Action action){
+            if(states == null || !states.ContainsKey(typeof(T))){
+                return false;
             }
+            ((IManageBuffer<T>) states[typeof(T)]).RegisterCallback(key, action);
+            return true;
         }
+        public bool RemoveCallback<T>(string key, Action action){
+            if(states == null || !states.ContainsKey(typeof(T))){
+                return false;
+            }
+            ((IManageBuffer<T>) states[typeof(T)]).RemoveCallback(key, action);
+            return true;
+        }
+        public bool TriggerUpdateCallbacks<T>(string key){
+            if(states == null || !states.ContainsKey(typeof(T))){
+                return false;
+            }
+            ((IManageBuffer<T>) states[typeof(T)]).TriggerUpdateCallbacks(key);
+            return true;
+        }
+
         void OnDestroy(){
+            if(states == null) return;
             foreach(var kvp in states){
-                kvp.Value.Destroy();
+                ((IBaseBufferManager)kvp.Value).Destroy();
             }
         }
     }

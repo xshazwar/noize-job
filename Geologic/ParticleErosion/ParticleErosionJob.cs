@@ -74,11 +74,11 @@ namespace xshazwar.noize.geologic {
 
         public void Execute () {
             for (int index = 0; index < res; index++){
-            int count = streamReader.BeginForEachIndex(index);
-            for(int n = 0; n < count; n ++){
-                minimas.Add(streamReader.Read<int>());
-                // Debug.Log($"added {minimas[n]}");
-            }
+                int count = streamReader.BeginForEachIndex(index);
+                for(int n = 0; n < count; n ++){
+                    minimas.Add(streamReader.Read<int>());
+                    // Debug.Log($"added {minimas[n]}");
+                }
             }
         }
 

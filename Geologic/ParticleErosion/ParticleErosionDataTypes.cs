@@ -125,6 +125,9 @@ namespace xshazwar.noize.geologic {
 
     public static class CardinalExtension {
 
+        // Stuck this in here to see if we could predict catchment borders using hamming weight
+        // or orientation of cardinals. 
+
         public static readonly int[] NIBBLE_LU = new int[] {
             0, 1, 1, 2, 1, 2, 2, 3, 
             1, 2, 2, 3, 2, 3, 3, 4
@@ -147,7 +150,6 @@ namespace xshazwar.noize.geologic {
             return ((Cardinal)(b | D1)) == b || (((Cardinal) b | D2) == b);
         }
 
-    
     }
     
 

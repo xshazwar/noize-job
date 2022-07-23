@@ -47,6 +47,8 @@ namespace xshazwar.noize.scripts {
         public ConcurrentQueue<TileRequest> workQueue;
         public ConcurrentQueue<MeshStageData> bakeQueue;
 
+        public PipelineStateManager pipelineManager;
+
         protected NativeArray<float> backingData;
 
         public Material meshMaterial;
@@ -57,13 +59,15 @@ namespace xshazwar.noize.scripts {
         protected bool isRunning;
         void Awake()
         {
+            pipelineManager = FindObjectsOfType<PipelineStateManager>()[0];
             isRunning = false;
             upstreamData += DataAvailable;
             upstreamMesh += MeshComplete;
             activeTiles = new Dictionary<string, TileRequest>();
             workQueue = new ConcurrentQueue<TileRequest>();
             children = new Dictionary<string, GameObject>();
-            backingData = new NativeArray<float>(generatorResolution * generatorResolution, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            // backingData = new NativeArray<float>(generatorResolution * generatorResolution, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            backingData =  pipelineManager.GetBuffer<float, NativeArray<float>>("__MeshGenerator", generatorResolution*generatorResolution);//new NativeArray<float>(generatorResolution * generatorResolution, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             if(bakeMeshes){
                 bakery = GetComponent<MeshBakery>();
             }
@@ -215,7 +219,7 @@ namespace xshazwar.noize.scripts {
         protected virtual void OnMeshBaked(string uuid){}
 
         public virtual void OnDestroy(){
-            backingData.Dispose();
+            // backingData.Dispose();
         }
     }
 }
