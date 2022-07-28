@@ -38,6 +38,7 @@ namespace xshazwar.noize.geologic {
         private NativeParallelHashMap<int, int> catchment;
         private NativeParallelHashMap<PoolKey, Pool> pools;
         public NativeList<PoolUpdate> poolUpdates;
+        public bool paramsReady = false;
         public bool ready = false;
         public bool updateWater = false;
         public float magnitude = 0.5f;
@@ -45,6 +46,14 @@ namespace xshazwar.noize.geologic {
         DrawPoolsJob drawJob;
 
     #if UNITY_EDITOR
+        private enum CHANNEL
+        {
+            R = 0,
+            G = 4,
+            B = 8,
+            A = 12
+        }
+
         public Texture2D texture;
 
         void CreateTexture(){
@@ -52,8 +61,12 @@ namespace xshazwar.noize.geologic {
         }
 
         void ApplyTexture(){
-            NativeSlice<float> CS = new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>((int) 4);
-            CS.CopyFrom(poolMap);
+            Debug.Log($"apply to texture -> {texture.height}, {texture.width}");
+            foreach (CHANNEL c in new CHANNEL[] {CHANNEL.G, CHANNEL.B, CHANNEL.R}){ //, CHANNEL.R
+                // if (c == inputChannel){continue;};
+                NativeSlice<float> CS = new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>((int) c);
+                CS.CopyFrom(poolMap);
+            }
             texture.Apply();
         }
     #endif
@@ -72,6 +85,8 @@ namespace xshazwar.noize.geologic {
             this.margin = generator.margin;
             // this.waterMaterial = 
             Debug.Log($"{request.uuid} has a pool drawer");
+            paramsReady = true;
+
         }
 
         public bool CheckDepends(){
@@ -90,11 +105,12 @@ namespace xshazwar.noize.geologic {
                 // }
                 return false;
             }
+            Debug.Log("PoolDrawer Depends ok!");
             return true;
         }
 
         public void Setup(){
-            if(!CheckDepends()){
+            if(!paramsReady || !CheckDepends()){
                 return;
             }
             jobctl = new StandAloneJobHandler();
@@ -111,6 +127,7 @@ namespace xshazwar.noize.geologic {
             CreateTexture();
             #endif
             ready = true;
+            Debug.Log("PoolDrawer Ready!");
         }
         
         void Awake(){
@@ -126,10 +143,13 @@ namespace xshazwar.noize.geologic {
                 #if UNITY_EDITOR
                 ApplyTexture();
                 #endif
-            }else if(updateWater){
+            }else if(updateWater && !jobctl.isRunning){
                 GenerateJunk();
                 ScheduleJob();
                 updateWater = false;
+            }else if(updateWater){
+                updateWater = false;
+                Debug.LogError("job still running??");
             }
         }
 
@@ -155,15 +175,17 @@ namespace xshazwar.noize.geologic {
                 pools,
                 default
             );
-            JobHandle second = DrawPoolsJob.Schedule(
+            // JobHandle second = PoolInterpolationDebugJob.ScheduleJob(pools, first);
+            JobHandle third = DrawPoolsJob.Schedule(
                 poolMap,
                 heightMap,
                 catchment,
                 pools,
                 generatorResolution,
+                // second
                 first
             );
-            jobctl.TrackJob(second);
+            jobctl.TrackJob(third);
         }
 
 

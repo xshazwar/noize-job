@@ -294,7 +294,7 @@ namespace xshazwar.noize.geologic {
     }
 
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
-    public struct DebugDrawAndCleanUpJob: IJob {
+    public struct PoolDrawDebugAndCleanUpJob: IJob {
 
         NativeParallelMultiHashMap<int, int> boundary_BM;
         NativeParallelMultiHashMap<int, int> boundary_MB;
@@ -304,7 +304,7 @@ namespace xshazwar.noize.geologic {
         FlowSuperPosition poolJob;
 
         public void Execute(){
-            poolJob.DebugDrawAndCleanUp(boundary_BM, boundary_MB, catchment, pools, paintFor3D);
+            poolJob.PoolDrawDebugAndCleanUp(boundary_BM, boundary_MB, catchment, pools, paintFor3D);
         }
 
         public static JobHandle ScheduleRun(
@@ -318,7 +318,7 @@ namespace xshazwar.noize.geologic {
             JobHandle deps,
             bool paintFor3D = false
         ){
-            var job = new DebugDrawAndCleanUpJob {
+            var job = new PoolDrawDebugAndCleanUpJob {
                 boundary_BM = boundary_BM,
                 boundary_MB = boundary_MB,
                 catchment = catchment,
@@ -358,9 +358,8 @@ namespace xshazwar.noize.geologic {
 
     }
 
-    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
     public struct DrawPoolsJob: IJobFor {
-
         int res;
         [ReadOnly]
         NativeParallelHashMap<int, int> catchment;
@@ -368,6 +367,9 @@ namespace xshazwar.noize.geologic {
         NativeParallelHashMap<PoolKey, Pool> pools;
         [ReadOnly]
         NativeSlice<float> heightMap;
+        
+        [NativeDisableParallelForRestriction]
+        [NativeDisableContainerSafetyRestriction]
         [WriteOnly]
         NativeSlice<float> poolMap;
 
@@ -375,7 +377,7 @@ namespace xshazwar.noize.geologic {
 
         public void Execute(int z){
             for(int x = 0; x < res; x++){
-                poolJob.DrawPoolLocation(x, z, catchment, pools, heightMap, poolMap);
+                poolJob.DrawPoolLocation(x, z, ref catchment, ref pools, ref heightMap, ref poolMap);
             }
         }
 
@@ -393,9 +395,43 @@ namespace xshazwar.noize.geologic {
                 pools = pools,
                 heightMap = heightMap,
                 poolMap = poolMap,
-                poolJob = new FlowSuperPosition()
+                poolJob = new FlowSuperPosition {
+                    res = new int2(res, res)
+                }
             };
-            return job.ScheduleParallel(res, 1, deps);
+            return job.ScheduleParallel(res, 16, deps);
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+    public struct PoolInterpolationDebugJob: IJob {
+        [ReadOnly]
+        NativeParallelHashMap<PoolKey, Pool> pools;
+
+        public void Execute(){
+            NativeArray<PoolKey> keys = pools.GetKeyArray(Allocator.Temp);
+            Pool pool = new Pool();
+            float val = 0f;
+            for(int x = 0; x < keys.Length; x++){
+                pools.TryGetValue(keys[x], out pool);
+                Debug.Log($"{pool.minimaHeight} -> {pool.drainHeight} @{pool.memberCount} b1: {pool.b1}, b2:{pool.b2} full {pool.volume / pool.capacity}% of {pool.capacity}");
+                
+                // pool.EstimateHeight(pool.minimaHeight, out val);
+                // Debug.Log($"{val} @ empty == {val - pool.minimaHeight}");
+                // pool.volume = pool.capacity;
+                // pool.EstimateHeight(pool.minimaHeight, out val);
+                // Debug.Log($"{val} @ full == {val - pool.drainHeight}");
+            }
+        }
+
+        public static JobHandle ScheduleJob(
+            NativeParallelHashMap<PoolKey, Pool> pools,
+            JobHandle deps
+        ){
+            var job = new PoolInterpolationDebugJob {
+                pools = pools
+            };
+            return job.Schedule(deps);
         }
     }
 

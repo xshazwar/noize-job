@@ -22,14 +22,14 @@ namespace xshazwar.noize.geologic {
 
     struct LazyFloatComparer: IComparer<float> {
         public int Compare(float a, float b){
-            float diff = abs(b - a);
+            float diff = b - a;
             if (abs(diff) < .000000001){
                 return 0;
             }
             if (diff > 0){
-                return 1;
+                return -1;
             }
-            return -1;
+            return 1;
         }
     }
 
@@ -97,6 +97,7 @@ namespace xshazwar.noize.geologic {
         public int indexMinima;
         public float minimaHeight;
         public int indexDrain;
+        public int memberCount;
         public float drainHeight;
         public float capacity;
         public float volume;
@@ -118,28 +119,19 @@ namespace xshazwar.noize.geologic {
         }
 
         public void EstimateHeight(float cellHeight, out float waterHeight){
-            waterHeight = (b1 + b2 * log(volume)) - (cellHeight - minimaHeight);
+            // wh == surfaceHeightAtMinima(volume) - cellHeight 
+            waterHeight = (b1 + (b2 * log(math.max(volume + 1f, 1f)))) - cellHeight;
         }
         
         public void SolvePool(NativeArray<float> heights){
-            capacity = 0f;
-            NativeArray<float> trainingVolumes = new NativeArray<float>(heights.Length, Allocator.Temp);
-
+            memberCount = heights.Length;
+            capacity = drainHeight - minimaHeight; // just to start;
             heights.Sort<float, LazyFloatComparer>(new LazyFloatComparer());
-            minimaHeight = heights[0];
-            float volumeBehind = 0f;
-            trainingVolumes[0] = .0000001f;
-            for (int i = 0 ; i < heights.Length; i++){
-                capacity += drainHeight - heights[i];
-                if (i > 0){
-                    volumeBehind += ((heights[i] - heights[i - 1]) * i);
-                    trainingVolumes[i] = volumeBehind;
-                }  
+            for (int i = 1 ; i < heights.Length; i++){
+                capacity += (drainHeight - heights[i]);
             }
-            Regression regressor = new Regression();
-            b1 = 0f;    
-            b2 = 0f;
-            regressor.LogRegression(heights, trainingVolumes, out b1, out b2);
+            b1 = minimaHeight * Regression.SCALE;
+            b2 = ((drainHeight - minimaHeight) * Regression.SCALE) / log(capacity + 1f);
         }
     }
 

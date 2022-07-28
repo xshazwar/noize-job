@@ -42,7 +42,7 @@ namespace xshazwar.noize.geologic {
 
         public static readonly int POOLSEARCHDEPTHI = 32;
         public static readonly byte POOLSEARCHDEPTHB = 32;
-        int2 res;
+        public int2 res;
         
         [NativeDisableContainerSafetyRestriction]
         NativeArray<Cardinal> flow;
@@ -662,6 +662,7 @@ namespace xshazwar.noize.geologic {
                 }
             }
             Pool pool = new Pool();
+            // Debug.Log($"{referenceMinima} -> {refMinHeight} >> {drainHeight} @{members.Length}");
             pool.Init(referenceMinima, refMinHeight, drainIdx, drainHeight);
             pool.SolvePool(members.AsArray());
             PoolKey key = new PoolKey {
@@ -814,23 +815,28 @@ namespace xshazwar.noize.geologic {
             Pool pool = new Pool(){
                 indexMinima = -1
             };
-            while(pools.ContainsKey(key)){
-                pools.TryGetValue(key, out pool);
-                if(pool.volume + update.volume < pool.capacity){
-                    pool.volume += update.volume;
-                    pools[key] = pool;
-                    // pool's not full and we have no more water
-                    return;
+            if(update.volume > 0f){
+                while(pools.ContainsKey(key)){
+                    pools.TryGetValue(key, out pool);
+                    if(pool.volume + update.volume < pool.capacity){
+                        pool.volume += update.volume;
+                        pools[key] = pool;
+                        // pool's not full and we have no more water
+                        return;
+                    }
+                    update.volume -= (pool.capacity - pool.volume);
+                    pool.volume = pool.capacity;
+                    if(pool.supercededBy.idx == -1){
+                        Debug.Log($"pool {key.idx}:{key.order}n{key.n} overfilled by {update.volume}, no successor -> evaporating");
+                        // no place else to dump the water
+                        return;
+                    }
+                    // go up the chain to the next pool
+                    key = pool.supercededBy;
                 }
-                update.volume -= (pool.capacity - pool.volume);
-                pool.volume = pool.capacity;
-                if(pool.supercededBy.idx == -1){
-                    Debug.Log($"pool {key.idx}:{key.order}n{key.n} overfilled by {update.volume}, no successor -> evaporating");
-                    // no place else to dump the water
-                    return;
-                }
-                // go up the chain to the next pool
-                key = pool.supercededBy;
+            }else{
+                // TODO
+                Debug.LogWarning("not handling negation yet");
             }
             Debug.LogWarning("We should not really ever get here?");
         }
@@ -840,13 +846,14 @@ namespace xshazwar.noize.geologic {
         public void DrawPoolLocation(
             int x,
             int z, 
-            NativeParallelHashMap<int, int> catchment,
-            NativeParallelHashMap<PoolKey, Pool> pools,
-            NativeSlice<float> heightMap,
-            NativeSlice<float> poolMap
+            ref NativeParallelHashMap<int, int> catchment,
+            ref NativeParallelHashMap<PoolKey, Pool> pools,
+            ref NativeSlice<float> heightMap,
+            ref NativeSlice<float> poolMap
         ){
             int idx = getIdx(x, z);
             PoolKey key = new PoolKey {
+                idx = -1,
                 order = 1,
                 n = 0
             };
@@ -863,16 +870,17 @@ namespace xshazwar.noize.geologic {
                     key = pool.supercededBy;
                 }
             }
-            if (pool.indexDrain == -1){
+            if (pool.indexMinima == -1){
                 poolMap[idx] = 0f;
             }else{
-                float value = 0f;
+                float value = 1f;
                 pool.EstimateHeight(heightMap[idx], out value);
                 poolMap[idx] = value;
+                
             }
         }
 
-        public void DebugDrawAndCleanUp(
+        public void PoolDrawDebugAndCleanUp(
             NativeParallelMultiHashMap<int, int> boundary_BM,
             NativeParallelMultiHashMap<int, int> boundary_MB,
             NativeParallelHashMap<int, int> catchment,

@@ -6,6 +6,11 @@ namespace xshazwar.noize.geologic {
     using Unity.Mathematics;
 
     struct Regression {
+
+        // The regression doesn't solve well for numbers under 1, so we'll scale by a set amount and
+            // see if that helps
+        public static readonly float SCALE = 1f;
+
         float Mean(NativeArray<float> items){
             float sum = 0f;
             for( int i = 0; i < items.Length; i ++){
@@ -42,31 +47,38 @@ namespace xshazwar.noize.geologic {
         }
 
         float PredictLog(float x, float b1, float b2){
-            return b1 + b2 * log(x);
+            return (b1 + b2 * log(x * SCALE)) / SCALE;
         }
 
-        public void LogRegression(NativeArray<float> xs, NativeArray<float> ys, out float b1, out float b2, bool RectifyToEndValue = true){
-            b1 = 0f;
-            b2 = 0f;
-            // Convert x -> ln(x)
-            int size = xs.Length;
-            float xM = xs[size - 1];
+        // public void LogRegression(NativeArray<float> ys, NativeArray<float> xs, out float b1, out float b2, bool RectifyToEndValue = true){
+        //     // xs -> heights
+        //     // ys -> volumes
+        //     b1 = 0f;
+        //     b2 = 0f;
+        //     // Convert x -> ln(x)
+        //     int size = xs.Length;
+        //     float xM = xs[size - 1];
             
-            for( int i = 0; i < size; i ++){
-                xs[i] = log(xs[i]);
-            }
+        //     for( int i = 0; i < size; i ++){
+        //         xs[i] = log(SCALE * xs[i]);
+        //     }
+
+        //     for( int i = 0; i < size; i ++){
+        //         ys[i] = SCALE * ys[i];
+        //     }
             
-            float sxx = SumSquareDifference(xs);
-            float sxy = ComputeSXY(xs, ys);
-            float syy = SumSquareDifference(ys);
+        //     float sxx = SumSquareDifference(xs);
+        //     float sxy = ComputeSXY(xs, ys);
+        //     float syy = SumSquareDifference(ys);
 
-            b2 = sxy / sxx;
-            b1 = Mean(ys) - b2 * Mean(xs);
+        //     b2 = sxy / sxx;
+        //     b1 = Mean(ys) - b2 * Mean(xs);
 
-            if (RectifyToEndValue){
-                float corr = PredictLog(xM, b1, b2) - ys[size - 1];
-                b1 += corr;
-            }
-        }
+        //     if (RectifyToEndValue){
+        //         b1 = ys[0];
+        //         // float corr = PredictLog(xM, b1, b2) - (SCALE * ys[size - 1]);
+        //         // b1 += corr;
+        //     }
+        // }
     }
 }

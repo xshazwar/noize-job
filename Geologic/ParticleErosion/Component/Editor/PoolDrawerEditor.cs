@@ -8,22 +8,30 @@ namespace xshazwar.noize.editor {
     [CustomEditor(typeof(PoolDrawer))]
     public class PoolDrawerEditor : Editor
     {
-
         SerializedProperty tex2d;
         SerializedProperty run;
+        SerializedProperty mag;
+        Texture2D texture;
 
         void OnEnable(){
             tex2d = serializedObject.FindProperty("texture");
             run = serializedObject.FindProperty("updateWater");
+            mag = serializedObject.FindProperty("magnitude");
+            texture = tex2d.objectReferenceValue as Texture2D;
         }
 
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
-            Texture2D texture = tex2d.objectReferenceValue as Texture2D;
-            // EditorGUI.DrawPreviewTexture(new Rect(240, 140, 512, 512), texture);
+            EditorGUILayout.PropertyField(mag);
             EditorGUILayout.PropertyField(run);
-            GUILayout.Label(texture);
+            // this is cheesy but it works
+            // sticking the texture into a label didn't
+            Rect space = EditorGUILayout.BeginHorizontal();
+            EditorGUI.DrawPreviewTexture(space, texture);
+            EditorGUILayout.TextArea("", GUIStyle.none, GUILayout.Height(256));
+            EditorGUILayout.EndHorizontal();
+            
             serializedObject.ApplyModifiedProperties();
         }
     }

@@ -124,7 +124,7 @@ namespace xshazwar.noize.geologic {
                 d.data, tmp, drainKeys, drainToMinima, catchmentMap, boundaryMapMinimaToMembers, pools, d.resolution, fourth);
             JobHandle sixth = SolvePoolHeirarchyJob.ScheduleRun(drainToMinima, pools, fifth);
             JobHandle lockHandle = lockJob(sixth);
-            JobHandle seventh = DebugDrawAndCleanUpJob.ScheduleRun(d.data, tmp, boundaryMapMemberToMinima, boundaryMapMinimaToMembers, catchmentMap, pools, d.resolution, lockHandle, !Draw2d);
+            JobHandle seventh = PoolDrawDebugAndCleanUpJob.ScheduleRun(d.data, tmp, boundaryMapMemberToMinima, boundaryMapMinimaToMembers, catchmentMap, pools, d.resolution, lockHandle, !Draw2d);
             jobHandle = TileHelpers.SWAP_RWTILE(d.data, tmp, seventh);
             // Only locking one of the 4 buffers because I'm feeling lazy... this will bite the ass later
             string bufferName = getBufferName((GeneratorData)requirements.data,"PARTERO_POOLS");
