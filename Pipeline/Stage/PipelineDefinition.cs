@@ -21,7 +21,7 @@ namespace xshazwar.noize.pipeline {
         public Action<StageIO> completeAction;
         public Action<StageIO, JobHandle> scheduledAction;
         public JobHandle dependency;
-        public Dictionary<string, NativeSlice<float>> sharedContext;
+        public PipelineStateManager? stageManager;
     }
 
     [System.Serializable] 

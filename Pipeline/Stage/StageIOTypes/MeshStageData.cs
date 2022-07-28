@@ -15,6 +15,8 @@ namespace xshazwar.noize.pipeline {
         public int marginPix = 5;
         public float tileSize = 512f;
         public float tileHeight = 512f;
+        public int xpos = 0;
+        public int zpos = 0;
         public Mesh mesh;
     }
 }

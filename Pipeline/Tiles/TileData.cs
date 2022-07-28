@@ -25,7 +25,7 @@ namespace xshazwar.noize.pipeline {
         [WriteOnly]
         NativeSlice<float> write;
 
-        public static JobHandle Schedule(NativeSlice<float> read_, NativeSlice<float> write_, JobHandle deps){
+        public static JobHandle Schedule(NativeSlice<float> write_, NativeSlice<float> read_, JobHandle deps){
             var job = new FlushWriteSlice();     
             job.read = read_;
             job.write = write_;
@@ -33,11 +33,11 @@ namespace xshazwar.noize.pipeline {
         }
 
         public void Execute(){
-            read.CopyFrom(write);
+            write.CopyFrom(read);
         }
     }
 
-    public delegate JobHandle FlushWriteSliceDelegate(NativeSlice<float> read_, NativeSlice<float> write_, JobHandle deps);
+    public delegate JobHandle FlushWriteSliceDelegate(NativeSlice<float> write_, NativeSlice<float> read_, JobHandle deps);
 
     static class TileHelpers {
         public static FlushWriteSliceDelegate SWAP_RWTILE =  FlushWriteSlice.Schedule;

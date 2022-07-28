@@ -40,12 +40,15 @@ namespace xshazwar.noize.pipeline {
 
         // List of buffer aliases that this pipeline expects to read, from the pipeline definition
         protected List<string> contextRequirements = null;
-        protected PipelineStateManager contextManager;
+        
+        [HideInInspector]
+        public PipelineStateManager contextManager;
 
         public bool pipeLineReady { get; private set;}
 
         public void OnEnable(){
             BeforeStart();
+            contextManager = FindObjectsOfType<PipelineStateManager>()[0];
             dependencyHell = new List<PipelineWorkItem>();
             queue = new ConcurrentQueue<PipelineWorkItem>();
             pipelineBeingScheduled = false;
@@ -81,7 +84,8 @@ namespace xshazwar.noize.pipeline {
                 data = input,
                 scheduledAction = scheduleAction,
                 completeAction = completeAction,
-                dependency = dependency
+                dependency = dependency,
+                stageManager = contextManager
             });
         }
         public void Schedule(StageIO input,
@@ -92,7 +96,8 @@ namespace xshazwar.noize.pipeline {
                 data = input,
                 scheduledAction = scheduleAction,
                 completeAction = completeAction,
-                dependency = dependency
+                dependency = dependency,
+                stageManager = contextManager
             });
         }
         public void Schedule(PipelineWorkItem wi){
@@ -178,7 +183,7 @@ namespace xshazwar.noize.pipeline {
             // grab a snapshot of dep-hell so we can mutate it in resolveorshelve
             PipelineWorkItem[] inHell = dependencyHell.ToArray();
             for(int i = 0; i < inHell.Length; i++){
-                if (ResolveOrShelve(ref inHell[i])){
+                if (ResolveOrShelve(ref inHell[i], i)){
                     return inHell[i];
                 }
             }
@@ -193,14 +198,16 @@ namespace xshazwar.noize.pipeline {
             return null;
         }
 
-        public bool ResolveOrShelve(ref PipelineWorkItem job){
-            if (contextRequirements == null){
-                return true;
-            }
-            if (!TryHydrateSharedContext(job)){
-                dependencyHell.Add(job);
+        public bool ResolveOrShelve(ref PipelineWorkItem job, int hellIdx = -1){
+            if (!WorkIsSchedulable(job)){
+                Debug.LogError($"{alias} : Scheduling Dependency not met for job {job.data.uuid}");
+                if(hellIdx < 0){
+                    dependencyHell.Add(job);
+                    Debug.Log($"{alias} : {job.data.uuid} -> hell | pop : {dependencyHell.Count}");
+                }
                 return false;
             }else{
+                if(hellIdx >= 0) dependencyHell.RemoveAt(hellIdx);
                 return true;
             } 
         }
@@ -245,8 +252,15 @@ namespace xshazwar.noize.pipeline {
             }
         }
 
-        public bool TryHydrateSharedContext(PipelineWorkItem item){
-            return true;
+        public bool WorkIsSchedulable(PipelineWorkItem item){
+            bool allReady = true;
+            bool res = true;
+            foreach(PipelineStage stage in stage_instances){
+                res = stage.IsSchedulable(item);
+                Debug.Log($"{alias}: {stage.ToString()} ready? {res}");
+                allReady = res && allReady;
+            }
+            return allReady;
         }
 
         public void OnDisable(){

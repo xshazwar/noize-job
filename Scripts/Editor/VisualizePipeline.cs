@@ -230,6 +230,7 @@ namespace xshazwar.noize.scripts.editor {
                         if (pl != null && pl.pipes.Count > 0){
                             Debug.Log($"restarting {pl.alias}");
                             pl.OnDisable();
+                            pl.contextManager.OnDestroy();
                             // pl.OnDestroy();
                             // pl.Start();
                             pl.OnEnable();

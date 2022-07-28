@@ -16,6 +16,7 @@ using xshazwar.noize.pipeline;
 using xshazwar.noize;
 using xshazwar.noize.scripts;
 using xshazwar.noize.mesh;
+using xshazwar.noize.geologic;
 
 namespace xshazwar.noize.scripts {
 
@@ -52,8 +53,6 @@ namespace xshazwar.noize.scripts {
         protected NativeArray<float> backingData;
 
         public Material meshMaterial;
-
-        public Action<StageIO> upstreamData;
         public Action<StageIO> upstreamMesh;
 
         protected bool isRunning;
@@ -61,13 +60,12 @@ namespace xshazwar.noize.scripts {
         {
             pipelineManager = FindObjectsOfType<PipelineStateManager>()[0];
             isRunning = false;
-            upstreamData += DataAvailable;
+            // upstreamData += DataAvailable;
             upstreamMesh += MeshComplete;
             activeTiles = new Dictionary<string, TileRequest>();
             workQueue = new ConcurrentQueue<TileRequest>();
             children = new Dictionary<string, GameObject>();
-            // backingData = new NativeArray<float>(generatorResolution * generatorResolution, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-            backingData =  pipelineManager.GetBuffer<float, NativeArray<float>>("__MeshGenerator", generatorResolution*generatorResolution);//new NativeArray<float>(generatorResolution * generatorResolution, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            backingData =  pipelineManager.GetBuffer<float, NativeArray<float>>("__MeshGenerator", generatorResolution*generatorResolution);
             if(bakeMeshes){
                 bakery = GetComponent<MeshBakery>();
             }
@@ -148,9 +146,26 @@ namespace xshazwar.noize.scripts {
                     xpos = tileResolution *  req.pos.x,
                     zpos = tileResolution *  req.pos.y,
                     data = new NativeSlice<float>(backingData)
-                },
-                completeAction: upstreamData
+                }
             );
+            RequestMesh(req);
+        }
+
+        public void RequestMesh(TileRequest req){
+            MeshStageData mData = new MeshStageData {
+                uuid = req.uuid,
+                inputResolution = generatorResolution,
+                resolution = tileResolution + (2 * calcMarginVerts()),
+                tileHeight = tileHeight,
+                tileSize = tileSize + (2 * calculateMarginWS()),
+                marginPix = calcMarginVerts(),
+                xpos = tileResolution * req.pos.x,
+                zpos = tileResolution * req.pos.y
+            };
+            // Create new Mesh Target at proper position
+            CreateChildMesh(req.pos, ref mData);
+            // Enqueue Work
+            meshPipeline.Enqueue(mData, completeAction: MeshComplete);
         }
 
         protected virtual void CreateChildMesh(Vector2Int pos, ref MeshStageData data){
@@ -164,29 +179,14 @@ namespace xshazwar.noize.scripts {
             //Add Components
             MeshFilter filter = go.AddComponent<MeshFilter>();
             MeshRenderer renderer = go.AddComponent<MeshRenderer>();
+            PoolDrawer poolDrawer = go.AddComponent<PoolDrawer>();
+            poolDrawer.SetFromTileGenerator(activeTiles[data.uuid], this);
             string key = pos.ToString();
             children[key] = go;
             if(meshMaterial != null){
                 renderer.material = meshMaterial;
             }
             filter.mesh = data.mesh;
-        }
-        public void DataAvailable(StageIO res){
-            GeneratorData d = (GeneratorData) res;
-            TileRequest req = activeTiles[d.uuid];
-            MeshStageData mData = new MeshStageData {
-                uuid = d.uuid,
-                inputResolution = d.resolution,
-                resolution = tileResolution + (2 * calcMarginVerts()),
-                tileHeight = tileHeight,
-                tileSize = tileSize + (2 * calculateMarginWS()),
-                marginPix = calcMarginVerts(),
-                data = d.data
-            };
-            // Create new Mesh Target at proper position
-            CreateChildMesh(req.pos, ref mData);
-            // Enqueue Work
-            meshPipeline.Enqueue(mData, completeAction: MeshComplete);
         }
 
         public void MeshComplete(StageIO res){

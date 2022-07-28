@@ -220,12 +220,6 @@ namespace xshazwar.noize.geologic {
     public struct PoolCreationJob : IJobParallelForDefer {
 
         ProfilerMarker profiler;
-        int res;
-
-        [ReadOnly]
-        NativeSlice<float> heightMap;
-        [ReadOnly]
-        NativeSlice<float> outMap;
         
         [ReadOnly]
         NativeArray<PoolKey> drainKeys;
@@ -259,9 +253,6 @@ namespace xshazwar.noize.geologic {
             JobHandle deps
         ){
             var job = new PoolCreationJob {
-                res = res,
-                heightMap = heightMap,
-                outMap = outMap,
                 drainKeys = drainKeys.AsDeferredJobArray(),
                 drainToMinima = drainToMinima,
                 catchment = catchment,
@@ -305,19 +296,15 @@ namespace xshazwar.noize.geologic {
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
     public struct DebugDrawAndCleanUpJob: IJob {
 
-        int res;
-        NativeSlice<float> heightMap;
-        NativeSlice<float> outMap;
         NativeParallelMultiHashMap<int, int> boundary_BM;
         NativeParallelMultiHashMap<int, int> boundary_MB;
         NativeParallelHashMap<int, int> catchment;
         NativeParallelHashMap<PoolKey, Pool> pools;
         bool paintFor3D;
-        bool cleanUp;
         FlowSuperPosition poolJob;
 
         public void Execute(){
-            poolJob.DebugDrawAndCleanUp(boundary_BM, boundary_MB, catchment, pools, paintFor3D, cleanUp);
+            poolJob.DebugDrawAndCleanUp(boundary_BM, boundary_MB, catchment, pools, paintFor3D);
         }
 
         public static JobHandle ScheduleRun(
@@ -329,25 +316,86 @@ namespace xshazwar.noize.geologic {
             NativeParallelHashMap<PoolKey, Pool> pools,
             int res,
             JobHandle deps,
-            bool paintFor3D = false,
-            bool cleanUp = true
+            bool paintFor3D = false
         ){
             var job = new DebugDrawAndCleanUpJob {
-                heightMap = heightMap,
-                outMap = outMap,
                 boundary_BM = boundary_BM,
                 boundary_MB = boundary_MB,
                 catchment = catchment,
                 pools = pools,
                 paintFor3D = paintFor3D,
-                cleanUp = cleanUp,
-                res = res,
                 poolJob = new FlowSuperPosition()
             };
             job.poolJob.SetupPoolGeneration(res, heightMap, outMap);
 
             return job.Schedule(deps);
 
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct UpdatePoolValues: IJob {
+        NativeList<PoolUpdate> updates;
+        NativeParallelHashMap<PoolKey, Pool> pools;
+        FlowSuperPosition poolJob;
+
+        public void Execute(){
+            poolJob.ReducePoolUpdatesAndApply(updates, ref pools);
+        }
+
+        public static JobHandle ScheduleRun(
+            NativeList<PoolUpdate> updates,
+            NativeParallelHashMap<PoolKey, Pool> pools,
+            JobHandle deps
+        ){
+            var job = new UpdatePoolValues(){
+                updates = updates,
+                pools = pools,
+                poolJob = new FlowSuperPosition()
+            };
+            return job.Schedule(deps);
+        }
+
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct DrawPoolsJob: IJobFor {
+
+        int res;
+        [ReadOnly]
+        NativeParallelHashMap<int, int> catchment;
+        [ReadOnly]
+        NativeParallelHashMap<PoolKey, Pool> pools;
+        [ReadOnly]
+        NativeSlice<float> heightMap;
+        [WriteOnly]
+        NativeSlice<float> poolMap;
+
+        FlowSuperPosition poolJob;
+
+        public void Execute(int z){
+            for(int x = 0; x < res; x++){
+                poolJob.DrawPoolLocation(x, z, catchment, pools, heightMap, poolMap);
+            }
+        }
+
+        public static JobHandle Schedule(
+            NativeSlice<float> poolMap,
+            NativeSlice<float> heightMap,
+            NativeParallelHashMap<int, int> catchment,
+            NativeParallelHashMap<PoolKey, Pool> pools,
+            int res,
+            JobHandle deps
+        ){
+            var job = new DrawPoolsJob {
+                res = res,
+                catchment = catchment,
+                pools = pools,
+                heightMap = heightMap,
+                poolMap = poolMap,
+                poolJob = new FlowSuperPosition()
+            };
+            return job.ScheduleParallel(res, 1, deps);
         }
     }
 

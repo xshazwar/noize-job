@@ -60,12 +60,40 @@ namespace xshazwar.noize.pipeline {
             throw new ArgumentException("type not supported");
         }
 
+        public bool BufferExists<T>(string name){
+            if(states == null || !states.ContainsKey(typeof(T))){
+                return false;
+            }
+            return ((IManageBuffer<T>) states[typeof(T)]).BufferExists(name);
+        }
         public bool ReleaseBuffer<T>(string name){
             if(states == null || !states.ContainsKey(typeof(T))){
                 return false;
             }
             return ((IManageBuffer<T>) states[typeof(T)]).ReleaseBuffer(name);
         }
+
+/*
+|
+|      LOCKS
+|
+*/
+
+    // Optional mechanism that stages can use to indicate they're scheduling a write to the buffer
+
+    public bool IsLocked<T>(string key){
+        if(states == null || !states.ContainsKey(typeof(T))){
+            return false;
+        }
+        return ((IManageBuffer<T>) states[typeof(T)]).IsLocked(key);
+    }
+
+    public bool TrySetLock<T>(string key, JobHandle handle, JobHandle spyHandle){
+        if(states == null || !states.ContainsKey(typeof(T))){
+                return false;
+            }
+        return ((IManageBuffer<T>) states[typeof(T)]).TrySetLock(key, ref handle, ref spyHandle);
+    }
 
 /*
 |
@@ -98,7 +126,7 @@ namespace xshazwar.noize.pipeline {
             return true;
         }
 
-        void OnDestroy(){
+        public void OnDestroy(){
             if(states == null) return;
             foreach(var kvp in states){
                 ((IBaseBufferManager)kvp.Value).Destroy();

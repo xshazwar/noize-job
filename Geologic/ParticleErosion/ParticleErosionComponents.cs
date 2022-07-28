@@ -778,13 +778,106 @@ namespace xshazwar.noize.geologic {
             }
         }
 
+        // Single
+
+        public void ReducePoolUpdatesAndApply(NativeList<PoolUpdate> updates, ref NativeParallelHashMap<PoolKey, Pool> pools){
+            // Updating the pools may require traversing the linked list in the pool values
+            // so it's economical to combine updates to the same pool
+
+            NativeList<PoolUpdate> reduced = new NativeList<PoolUpdate>(pools.Count(), Allocator.Temp);
+            updates.Sort();
+            int skip = 1;
+            int idx = 0;
+            float volume = 0f;
+            for(int i = 0; i < updates.Length; i+= skip){
+                skip = 1;
+                idx = updates[i].minimaIdx;
+                volume = updates[i].volume;
+                while(skip + i < updates.Length && updates[i + skip].minimaIdx == idx){
+                    volume += updates[i + skip].volume;
+                    skip++;
+                }
+                reduced.Add(new PoolUpdate {minimaIdx = idx, volume = volume});
+            }
+            for( int i = 0; i < reduced.Length; i ++){
+                UpdatePoolValue(reduced[i], ref pools);
+            }
+
+        }
+
+        public void UpdatePoolValue(PoolUpdate update, ref NativeParallelHashMap<PoolKey, Pool> pools){
+            PoolKey key = new PoolKey {
+                idx = update.minimaIdx,
+                order = 1,
+                n = 0
+            };
+            Pool pool = new Pool(){
+                indexMinima = -1
+            };
+            while(pools.ContainsKey(key)){
+                pools.TryGetValue(key, out pool);
+                if(pool.volume + update.volume < pool.capacity){
+                    pool.volume += update.volume;
+                    pools[key] = pool;
+                    // pool's not full and we have no more water
+                    return;
+                }
+                update.volume -= (pool.capacity - pool.volume);
+                pool.volume = pool.capacity;
+                if(pool.supercededBy.idx == -1){
+                    Debug.Log($"pool {key.idx}:{key.order}n{key.n} overfilled by {update.volume}, no successor -> evaporating");
+                    // no place else to dump the water
+                    return;
+                }
+                // go up the chain to the next pool
+                key = pool.supercededBy;
+            }
+            Debug.LogWarning("We should not really ever get here?");
+        }
+
+        // Parallel
+
+        public void DrawPoolLocation(
+            int x,
+            int z, 
+            NativeParallelHashMap<int, int> catchment,
+            NativeParallelHashMap<PoolKey, Pool> pools,
+            NativeSlice<float> heightMap,
+            NativeSlice<float> poolMap
+        ){
+            int idx = getIdx(x, z);
+            PoolKey key = new PoolKey {
+                order = 1,
+                n = 0
+            };
+            Pool pool = new Pool(){
+                indexMinima = -1
+            };
+            catchment.TryGetValue(idx, out key.idx);
+            while(pools.ContainsKey(key)){
+                pools.TryGetValue(key, out pool);
+                if(pool.volume < pool.capacity){
+                    break;
+                }
+                if(pool.supercededBy.idx != -1){
+                    key = pool.supercededBy;
+                }
+            }
+            if (pool.indexDrain == -1){
+                poolMap[idx] = 0f;
+            }else{
+                float value = 0f;
+                pool.EstimateHeight(heightMap[idx], out value);
+                poolMap[idx] = value;
+            }
+        }
+
         public void DebugDrawAndCleanUp(
             NativeParallelMultiHashMap<int, int> boundary_BM,
             NativeParallelMultiHashMap<int, int> boundary_MB,
             NativeParallelHashMap<int, int> catchment,
             NativeParallelHashMap<PoolKey, Pool> pools,
-            bool paintFor3D = false,
-            bool cleanUp = true
+            bool paintFor3D = false
         ){
             // outmap / heightmap / res from setup required
 

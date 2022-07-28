@@ -11,10 +11,35 @@ using Unity.Jobs;
 
 namespace xshazwar.noize.pipeline {
 
-    public enum PipelineBufferOperation {
-        READ,
-        WRITE
+    // public enum PipelineBufferOperation {
+    //     READ,
+    //     WRITE
+    // }
+/*
+// 
+//   Interface
+// 
+*/
+
+    public interface IBaseBufferManager {
+        public bool BufferExists(string key);
+        public bool ReleaseBuffer(string key);
+        public void Destroy();
+        public void RegisterCallback(string key, Action action);
+        public void RemoveCallback(string key, Action action);
+        public void TriggerUpdateCallbacks(string key);
+        public bool IsLocked(string key);
+        public bool TrySetLock(string key, ref JobHandle handle, ref JobHandle lockHandle);
     }
+    public interface IManageBuffer<out T> : IBaseBufferManager {
+        public T GetBuffer(string key, int size);
+    }
+
+/*
+// 
+//   Type -> StateManager Lookups
+// 
+*/
 
     public static class ConstraintsLinear<T> where T : unmanaged, IEquatable<T> {
         public static readonly HashSet<Type> SUPPORTED_TYPES = new HashSet<Type> {
@@ -42,7 +67,6 @@ namespace xshazwar.noize.pipeline {
         }
     }
 
-
     public static class ConstraintsKeyValue<TKey, TValue> where TKey : struct, IEquatable<TKey> where TValue: struct{
         public static readonly HashSet<Type> SUPPORTED_TYPES = new HashSet<Type> {
             typeof(NativeParallelHashMap<TKey, TValue>),
@@ -68,19 +92,12 @@ namespace xshazwar.noize.pipeline {
         }
     }
 
-    public interface IBaseBufferManager {
-        public bool BufferExists(string key);
-        public bool ReleaseBuffer(string key);
-        public void Destroy();
-        public void RegisterCallback(string key, Action action);
-        public void RemoveCallback(string key, Action action);
-        public void TriggerUpdateCallbacks(string key);
-    }
-    public interface IManageBuffer<out T> : IBaseBufferManager {
-        public T GetBuffer(string key, int size);
-    }
+/*
+// 
+//   StateManagers
+// 
+*/
 
-    
     public class NativeParallelHashMapState<K, V>: DisposablePipelineState<NativeParallelHashMap<K, V>> where K : struct, IEquatable<K> where V: struct {
         public NativeParallelHashMapState(){}
 
@@ -134,6 +151,12 @@ namespace xshazwar.noize.pipeline {
         }
     }
 
+/*
+// 
+//   Base State Manager Class
+// 
+*/
+
     public abstract class DisposablePipelineState<C> : BasePipelineState<C>, IManageBuffer<C> where C : IDisposable {
         public DisposablePipelineState(){}
 
@@ -147,9 +170,8 @@ namespace xshazwar.noize.pipeline {
 
         // bufferName -> {guid-of-work}.{buffer-alias}
         private Dictionary<string, Action> notifier;
-        
         private Dictionary<string, C> buffers;
-        private Queue<C> pool;
+        private Dictionary<string, HandleLock> locks;
 
         public BasePipelineState(){}
 
@@ -158,6 +180,7 @@ namespace xshazwar.noize.pipeline {
                 buffers = new Dictionary<string, C>();
             }
             if (!buffers.ContainsKey(key)){
+                Debug.Log($"<{typeof(C)}>: {key} is not allocated, creating instance");
                 buffers[key] = CreateInstance(size);
             }
             return buffers[key];
@@ -198,6 +221,25 @@ namespace xshazwar.noize.pipeline {
             }
         }
 
+        public bool TrySetLock(string key, ref JobHandle jobHandle, ref JobHandle lockHandle){
+            // No need to release lock, if the handle is complete then it's unlocked.
+            if(IsLocked(key)){
+                return false;
+            }
+            locks[key] = new HandleLock(jobHandle, lockHandle);
+            return true;
+        }
+
+        public bool IsLocked(string key){
+            if(locks == null){
+                locks = new Dictionary<string, HandleLock>();
+            }
+            if(!locks.ContainsKey(key)){
+                return false;
+            }
+            return locks[key].isLocked();
+        }
+
         public void Destroy(){
             foreach(var key in buffers.Keys.ToArray()){
                 Debug.Log($"Disposing of remaining buffer {key}");
@@ -206,7 +248,7 @@ namespace xshazwar.noize.pipeline {
         }
 
         public abstract void Dispose(C item);
-
         public abstract C CreateInstance(int size);
+
     }
 }

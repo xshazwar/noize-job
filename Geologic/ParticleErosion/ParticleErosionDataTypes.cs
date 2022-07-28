@@ -38,6 +38,26 @@ namespace xshazwar.noize.geologic {
 //   POOLS
 // 
 */
+    public struct PoolUpdate:  IComparable<PoolUpdate>, IEquatable<PoolUpdate>{
+        public int minimaIdx;
+        public float volume;
+
+        public int CompareTo(PoolUpdate obj){
+            if (obj.Equals(this)){ return 0;}
+            return GetHashCode() > obj.GetHashCode() ? 1 : -1;
+        }
+
+        public override int GetHashCode(){
+            return minimaIdx.GetHashCode() ^ volume.GetHashCode();
+        }
+
+        public bool Equals(PoolUpdate other){
+            if (minimaIdx != other.minimaIdx){
+                return false;
+            }
+            return true;
+        }
+    }
 
     public struct PoolKey : IEquatable<PoolKey>, IComparable<PoolKey> {
         // This can be used to reference a minima or a drain. Anything that is ambigous between pool orders

@@ -19,13 +19,8 @@ using xshazwar.noize.pipeline;
 
 namespace xshazwar.noize.mesh {
 
-    public enum MeshType {
-        SquareGridHeightMap,
-        OvershootSquareGridHeightMap
-    };
-
-    [CreateAssetMenu(fileName = "MeshTileStage", menuName = "Noize/Output/MeshTile", order = 2)]
-    public class MeshTileStage: PipelineStage {
+    [CreateAssetMenu(fileName = "MeshTileReferenceDataStage", menuName = "Noize/Output/MeshTileReferenceData", order = 2)]
+    public class MeshTileReferenceDataStage: PipelineStage {
         // TODO swap between jobs depending on mesh resolution to save memory
 		static HeightMapMeshJobScheduleDelegate[] jobs = {
 			HeightMapMeshJob<SquareGridHeightMap, PositionStream32>.ScheduleParallel,
@@ -36,13 +31,35 @@ namespace xshazwar.noize.mesh {
         private Mesh.MeshDataArray meshDataArray;
 		private Mesh.MeshData meshData;
         public MeshType meshType = MeshType.SquareGridHeightMap;
+        public string contextAlias;
+
+        private string getBufferName(MeshStageData d){
+            return $"{d.xpos}_{d.zpos}__{d.inputResolution}__{contextAlias}";
+        }
+
+        public override bool IsSchedulable(PipelineWorkItem job){
+            if(job.stageManager == null){
+                return false;
+            }
+            MeshStageData gd = (MeshStageData) job.data;
+            string bufferName = getBufferName(gd);
+            if(!job.stageManager.BufferExists<NativeArray<float>>(bufferName)){
+                return false;
+            }
+            bool locked = job.stageManager.IsLocked<NativeArray<float>>(bufferName);
+            return !locked;
+
+        }
 
         public override void Schedule(PipelineWorkItem requirements, JobHandle dependency){
             MeshStageData d = (MeshStageData) requirements.data;
             currentMesh = d.mesh;
             meshDataArray = Mesh.AllocateWritableMeshData(1);
 			meshData = meshDataArray[0];
-			jobHandle = jobs[(int)meshType](currentMesh, meshData, d.resolution, d.inputResolution, d.marginPix, d.tileHeight, d.tileSize, d.data, dependency);
+            int res = d.inputResolution * d.inputResolution;
+            NativeArray<float> buffer = requirements.stageManager.GetBuffer<float, NativeArray<float>>(getBufferName(d), res);
+            NativeSlice<float> contextTarget = new NativeSlice<float>(buffer);
+			jobHandle = jobs[(int)meshType](currentMesh, meshData, d.resolution, d.inputResolution, d.marginPix, d.tileHeight, d.tileSize, contextTarget, dependency);
         }
 
         public override void OnStageComplete(){

@@ -19,6 +19,12 @@ namespace xshazwar.noize.pipeline {
         public virtual void ResizeNativeContainers(int size){
             // Resize containers
         }
+
+        public virtual bool IsSchedulable(PipelineWorkItem job){
+            // If this stage doesn't have external data dependencies it should always
+            // be schedulable
+            return true;
+        }
         
         public virtual void CheckRequirements<T>(PipelineWorkItem requirements) where T: StageIO {
             if (requirements.data is T){
