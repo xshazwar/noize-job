@@ -785,6 +785,8 @@ namespace xshazwar.noize.geologic {
             // Updating the pools may require traversing the linked list in the pool values
             // so it's economical to combine updates to the same pool
 
+            NativeArray<PoolKey> poolKeys = pools.GetKeyArray(Allocator.Temp);
+            poolKeys.Sort();
             NativeList<PoolUpdate> reduced = new NativeList<PoolUpdate>(pools.Count(), Allocator.Temp);
             updates.Sort();
             int skip = 1;
@@ -801,12 +803,12 @@ namespace xshazwar.noize.geologic {
                 reduced.Add(new PoolUpdate {minimaIdx = idx, volume = volume});
             }
             for( int i = 0; i < reduced.Length; i ++){
-                UpdatePoolValue(reduced[i], ref pools);
+                UpdatePoolValue(reduced[i], ref pools, ref poolKeys);
             }
 
         }
 
-        public void UpdatePoolValue(PoolUpdate update, ref NativeParallelHashMap<PoolKey, Pool> pools){
+        public void UpdatePoolValue(PoolUpdate update, ref NativeParallelHashMap<PoolKey, Pool> pools, ref NativeArray<PoolKey> poolKeys){
             PoolKey key = new PoolKey {
                 idx = update.minimaIdx,
                 order = 1,
@@ -816,9 +818,9 @@ namespace xshazwar.noize.geologic {
                 indexMinima = -1
             };
             if(update.volume > 0f){
-                while(pools.ContainsKey(key)){
+                while(poolKeys.Contains(key)){
                     pools.TryGetValue(key, out pool);
-                    if(pool.volume + update.volume < pool.capacity){
+                    if((pool.volume + update.volume) < pool.capacity){
                         pool.volume += update.volume;
                         pools[key] = pool;
                         // pool's not full and we have no more water
@@ -826,12 +828,16 @@ namespace xshazwar.noize.geologic {
                     }
                     update.volume -= (pool.capacity - pool.volume);
                     pool.volume = pool.capacity;
+                    pools[key] = pool;
                     if(pool.supercededBy.idx == -1){
-                        Debug.Log($"pool {key.idx}:{key.order}n{key.n} overfilled by {update.volume}, no successor -> evaporating");
+                        // Debug.Log($"pool {key.idx}:{key.order}n{key.n} overfilled by {update.volume}, no successor -> evaporating {pool.volume} / {pool.capacity}");
                         // no place else to dump the water
                         return;
                     }
                     // go up the chain to the next pool
+                    // if(pool.supercededBy.idx != -1){
+                    //     Debug.LogWarning($"rolling up {key.idx}:{key.order}n{key.n} -> {pool.supercededBy.idx}:{pool.supercededBy.order}n{pool.supercededBy.n}");
+                    // }
                     key = pool.supercededBy;
                 }
             }else{
@@ -861,13 +867,21 @@ namespace xshazwar.noize.geologic {
                 indexMinima = -1
             };
             catchment.TryGetValue(idx, out key.idx);
+            int depth = 0;
             while(pools.ContainsKey(key)){
+                depth++;
                 pools.TryGetValue(key, out pool);
                 if(pool.volume < pool.capacity){
+                    // Debug.LogWarning($"has capacity {key.idx}:{key.order}n{key.n} -> {pool.volume} / {pool.capacity}");
                     break;
                 }
                 if(pool.supercededBy.idx != -1){
+                    // Debug.LogWarning($"is full and has parent {key.idx}:{key.order}n{key.n} >> {pool.supercededBy.idx}:{pool.supercededBy.order}n{pool.supercededBy.n}");
                     key = pool.supercededBy;
+                }
+                if(depth > 128){
+                    Debug.LogError("maximum pool draw depth exceeded, bugged?");
+                    break;
                 }
             }
             if (pool.indexMinima == -1){

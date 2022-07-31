@@ -81,8 +81,6 @@ BEGIN_CODE
    }
    
    void AreaWater(int x, int z, inout bool neighborsWater, inout float maxNeigborTH, inout float minDryNeighborHeight){
-      // TODO there's a small artifact that needs: inout float minDryNeighborHeight
-      // 
       float total = 0;
       int xt = 0;
       int zt = 0;
