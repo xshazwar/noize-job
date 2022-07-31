@@ -5,7 +5,7 @@ namespace xshazwar.noize.mesh {
 
 	public interface IMeshGenerator {
 
-		Bounds Bounds { get; }
+		Bounds Bounds { get; set;}
 
 		int VertexCount { get; }
 

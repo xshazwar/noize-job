@@ -7,7 +7,7 @@ namespace xshazwar.noize.mesh.Generators {
 
 	public struct SharedSquareGridPosition : IMeshGenerator {
 
-		public Bounds Bounds => new Bounds(Vector3.zero, new Vector3(1f, 0f, 1f));
+		public Bounds Bounds {get; set;}
         public int VertexCount => (Resolution + 1) * (Resolution + 1);
 
 		public int IndexCount => 6 * Resolution * Resolution;
@@ -22,17 +22,17 @@ namespace xshazwar.noize.mesh.Generators {
 			var vertex = new Vertex();
 			vertex.normal.z = -1f;
 			vertex.tangent.xw = float2(1f, -1f);
+
 			vertex.position.x = -0.5f;
 			vertex.position.z = (float)z / Resolution - 0.5f;
-			//fake heights for test
-			vertex.position.y = .1f * math.sin(-0.5f);
+			vertex.position.y = 0f;
+
 			streams.SetVertex(vi, vertex);
 			vi += 1;
 
 			for (int x = 1; x <= Resolution; x++, vi++, ti += 2) {
 				vertex.position.x = (float)x / Resolution - 0.5f;
-				//fake heights for test
-				vertex.position.y = .1f * math.sin((float)x);
+				// vertex.position.y = 0f;
 				streams.SetVertex(vi, vertex);
 
 				if (z > 0) {

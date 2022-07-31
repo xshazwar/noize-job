@@ -66,7 +66,7 @@ namespace xshazwar.noize.mesh.Generators {
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private void SetVertexValues(ref Vertex v, int x, int z, NativeSlice<float> heights){
 			float t = heights[getIdx(x, z)];
-			v.position.y = (t * Height); // - MarginScale(x, z);
+			v.position.y = (t * Height);
 			float l = x > 0 ? heights[getIdx(x - 1, z)] : InterpolateEdge(t, heights[getIdx(x + 1, z)]);
 			float r = x < Resolution - 1 ? heights[getIdx(x + 1, z)] : InterpolateEdge(t, heights[getIdx(x - 1, z)]);
 			float u = z > 0 ? heights[getIdx(x, z - 1)] : InterpolateEdge(heights[getIdx(x, z + 1)], t);

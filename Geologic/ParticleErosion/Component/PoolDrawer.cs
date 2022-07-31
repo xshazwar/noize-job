@@ -29,12 +29,13 @@ namespace xshazwar.noize.geologic {
         private int tileSize = 1000;
         private int generatorResolution = 1000;
         private int tileResolution = 1000;
-        private int margin = 5;
+        private int meshResolution = 1000;
         private Material waterMaterial;
+        private MaterialPropertyBlock materialProps;
         public StandAloneJobHandler jobctl;
         public PipelineStateManager stateManager;
-        private NativeSlice<float> poolMap;
-        private NativeSlice<float> heightMap;
+        private NativeArray<float> poolMap;
+        private NativeArray<float> heightMap;
         private NativeParallelHashMap<int, int> catchment;
         private NativeParallelHashMap<PoolKey, Pool> pools;
         public NativeList<PoolUpdate> poolUpdates;
@@ -42,6 +43,13 @@ namespace xshazwar.noize.geologic {
         public bool ready = false;
         public bool updateWater = false;
         public float magnitude = 0.5f;
+        private Mesh waterMesh;
+        private ComputeBuffer poolBuffer;
+        private ComputeBuffer heightBuffer;
+        private ComputeBuffer argsBuffer;
+        private uint[] args = new uint[5] { 0, 0, 0, 0, 0 };
+        private Matrix4x4[] waterMatrix;
+        private Bounds bounds;
         UpdatePoolValues updateJob;
         DrawPoolsJob drawJob;
 
@@ -65,7 +73,7 @@ namespace xshazwar.noize.geologic {
             foreach (CHANNEL c in new CHANNEL[] {CHANNEL.G, CHANNEL.B, CHANNEL.R}){ //, CHANNEL.R
                 // if (c == inputChannel){continue;};
                 NativeSlice<float> CS = new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>((int) c);
-                CS.CopyFrom(poolMap);
+                CS.CopyFrom(new NativeSlice<float>(poolMap));
             }
             texture.Apply();
         }
@@ -76,14 +84,16 @@ namespace xshazwar.noize.geologic {
         }
 
         public void SetFromTileGenerator(TileRequest request, MeshTileGenerator generator){
+            double patchRes = (tileResolution * 1.0) / tileSize;
+            
             this.tileData = request;
             this.stateManager = generator.pipelineManager;
             this.tileHeight = generator.tileHeight;
             this.tileSize = generator.tileSize;
             this.generatorResolution = generator.generatorResolution;
             this.tileResolution = generator.tileResolution;
-            this.margin = generator.margin;
-            // this.waterMaterial = 
+            this.meshResolution = generator.meshResolution;
+            this.waterMaterial = generator.waterMaterial;
             Debug.Log($"{request.uuid} has a pool drawer");
             paramsReady = true;
 
@@ -117,12 +127,26 @@ namespace xshazwar.noize.geologic {
             pools = stateManager.GetBuffer<PoolKey, Pool, NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS"), generatorResolution * generatorResolution);
             poolUpdates = stateManager.GetBuffer<PoolUpdate, NativeList<PoolUpdate>>(getBufferName("PARTERO_FAKE_POOLUPDATE"), 2 * pools.Count());
             catchment = stateManager.GetBuffer<int, int, NativeParallelHashMap<int, int>>(getBufferName("PARTERO_CATCHMENT"), generatorResolution * generatorResolution);
-            poolMap = new NativeSlice<float>(
-                stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_POOL"), generatorResolution * generatorResolution)
-            );
-            heightMap = new NativeSlice<float>(
-                stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT"), generatorResolution * generatorResolution)
-            );
+            poolMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_POOL"), generatorResolution * generatorResolution);
+            heightMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT"), generatorResolution * generatorResolution);
+            poolBuffer = new ComputeBuffer(heightMap.Length, 4); // sizeof(float)
+            heightBuffer = new ComputeBuffer(heightMap.Length, 4); // sizeof(float)
+            argsBuffer = new ComputeBuffer(1, args.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
+            materialProps = new MaterialPropertyBlock();
+            materialProps.SetBuffer("_WaterValues", poolBuffer);
+            materialProps.SetBuffer("_TerrainValues", heightBuffer);
+            materialProps.SetFloat("_Height", tileHeight);
+            materialProps.SetFloat("_Mesh_Size", tileSize);
+            materialProps.SetFloat("_Mesh_Res", meshResolution * 1.0f);
+            materialProps.SetFloat("_Data_Res", generatorResolution * 1.0f);
+            waterMatrix = new Matrix4x4[] {
+                Matrix4x4.TRS( transform.position + new Vector3( 0.5f * tileSize, 0f,  0.5f * tileSize), Quaternion.identity, 400 * Vector3.one )
+            };
+            bounds = new Bounds(transform.position, new Vector3(10000, 10000, 10000));
+            waterMesh = MeshHelper.SquarePlanarMesh(meshResolution, tileHeight, tileSize);
+            args[0] = (uint)waterMesh.GetIndexCount(0);
+            args[1] = (uint)1;
+            argsBuffer.SetData(args);
             #if UNITY_EDITOR
             CreateTexture();
             #endif
@@ -134,12 +158,20 @@ namespace xshazwar.noize.geologic {
             
         }
 
+
+        public void PushBuffer(){
+            poolBuffer.SetData(poolMap);
+            heightBuffer.SetData(heightMap);
+        }
+
         public void Update(){
             if(!ready){
                 Setup();
+                return;
             }else if(jobctl.JobComplete()){
                 jobctl.CloseJob();
                 Debug.Log("Job done!");
+                PushBuffer();
                 #if UNITY_EDITOR
                 ApplyTexture();
                 #endif
@@ -151,6 +183,7 @@ namespace xshazwar.noize.geologic {
                 updateWater = false;
                 Debug.LogError("job still running??");
             }
+            DrawWater();
         }
 
         public void GenerateJunk(){
@@ -177,8 +210,8 @@ namespace xshazwar.noize.geologic {
             );
             // JobHandle second = PoolInterpolationDebugJob.ScheduleJob(pools, first);
             JobHandle third = DrawPoolsJob.Schedule(
-                poolMap,
-                heightMap,
+                new NativeSlice<float>(poolMap),
+                new NativeSlice<float>(heightMap),
                 catchment,
                 pools,
                 generatorResolution,
@@ -186,6 +219,17 @@ namespace xshazwar.noize.geologic {
                 first
             );
             jobctl.TrackJob(third);
+        }
+
+        public void DrawWater(){
+            // Graphics.DrawMeshInstanced(waterMesh, 0, waterMaterial, waterMatrix, 1, materialProps);
+            Graphics.DrawMeshInstancedIndirect(waterMesh, 0, waterMaterial, bounds, argsBuffer, 0, materialProps);
+        }
+
+        public void OnDestroy(){
+            argsBuffer.Release();
+            poolBuffer.Release();
+            heightBuffer.Release();
         }
 
 

@@ -40,6 +40,13 @@ namespace xshazwar.noize.scripts {
 
         public int generatorResolution = 1000;
         public int tileResolution = 1000;
+        public int meshResolution {
+            get {
+                return calcTotalResolution();
+            }
+            private set {}
+        }
+
         public int margin = 5;
         public bool bakeMeshes;
 
@@ -53,6 +60,7 @@ namespace xshazwar.noize.scripts {
         protected NativeArray<float> backingData;
 
         public Material meshMaterial;
+        public Material waterMaterial;
         public Action<StageIO> upstreamMesh;
 
         protected bool isRunning;
@@ -155,7 +163,7 @@ namespace xshazwar.noize.scripts {
             MeshStageData mData = new MeshStageData {
                 uuid = req.uuid,
                 inputResolution = generatorResolution,
-                resolution = tileResolution + (2 * calcMarginVerts()),
+                resolution = meshResolution,
                 tileHeight = tileHeight,
                 tileSize = tileSize + (2 * calculateMarginWS()),
                 marginPix = calcMarginVerts(),
@@ -180,7 +188,9 @@ namespace xshazwar.noize.scripts {
             MeshFilter filter = go.AddComponent<MeshFilter>();
             MeshRenderer renderer = go.AddComponent<MeshRenderer>();
             PoolDrawer poolDrawer = go.AddComponent<PoolDrawer>();
-            poolDrawer.SetFromTileGenerator(activeTiles[data.uuid], this);
+            poolDrawer.SetFromTileGenerator(
+                activeTiles[data.uuid], this
+            );
             string key = pos.ToString();
             children[key] = go;
             if(meshMaterial != null){
