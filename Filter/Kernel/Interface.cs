@@ -4,19 +4,10 @@ using UnityEngine;
 
 using static Unity.Mathematics.math;
 
-namespace xshazwar.noize.cpu.mutate {
-    using Unity.Mathematics;
-    
-    // public interface ICreateTiles {
-    //     // total resolution including margin
-    //     int JobLength {get; set;}
-    //     int Resolution {get; set;}
-    //     float _terrain_width {get; set;}
-    //     float _terrain_height {get; set;}
+using xshazwar.noize.pipeline;
 
-    //     float pixel_size_ws {get; set;} // => _terrain_width / Resolution;
-    //     void Execute<T>(int i, T tile) where  T : struct, IWriteOnlyTile; 
-    // }
+namespace xshazwar.noize.filter {
+    using Unity.Mathematics;
 
     public interface ICommonTileSettings {
         int JobLength {get; set;}
@@ -30,8 +21,11 @@ namespace xshazwar.noize.cpu.mutate {
 
     public interface IFractalSettings {
         public float Hurst {get; set;}
+        public float StartingAmplitude {get; set;}
         public int OctaveCount {get; set;}
         public int NoiseSize {get; set;}
+        public float StepDown {get; set;}
+        public float DetuneRate {get; set;}
         public float NormalizationValue {get; set;}
     }
 
@@ -52,6 +46,21 @@ namespace xshazwar.noize.cpu.mutate {
                 where V: struct, IReadOnlyTile; 
     }
 
+    public interface IConstantTiles : ICommonTileSettings {
+        // tile A is left side, factor is constant in operation
+        // result put onto A
+
+        public float ConstantValue {get; set;}
+        void Execute<T>(int i, T tileA) 
+                where  T : struct, IRWTile; 
+    }
+
+    public interface IApplyCurve: ICommonTileSettings {
+        public int CurveSize {get; set;}
+        public void Setup(int resolution, int jobLength, int curveSize);
+        void Execute<T>(int i, T tile, NativeSlice<float> curve) where  T : struct, IRWTile;
+    }
+
     public interface IKernelData {
         public void Setup(float kernelFactor, int kernelSize, NativeArray<float> kernel);
     }
@@ -61,32 +70,9 @@ namespace xshazwar.noize.cpu.mutate {
     }
     public interface IMathTiles : IMutateTiles {}
 
-    public interface IComputeFlowData: ICommonTileSettings {
-        void Execute<RO, RW>(int i, RO height, RO water, RW flowN, RW flowS, RW flowE, RW flowW) 
-            where  RO : struct, IReadOnlyTile
-            where  RW : struct, IRWTile;
-    }
-
-   public interface IComputeWaterLevel: ICommonTileSettings {
-
-        void Execute<RO, RW>(int i, RW water, RO flowN, RO flowS, RO flowE, RO flowW) 
-            where  RO : struct, IReadOnlyTile
-            where  RW : struct, IRWTile;
-    }
-
-    
-
-    public interface IWriteFlowMap: ICommonTileSettings {
-
-        void Execute<RO, WO>(int z, WO height, RO flowN, RO flowS, RO flowE, RO flowW) 
-            where  RO : struct, IReadOnlyTile
-            where  WO : struct, IWriteOnlyTile;
-    }
-
     public interface INormalizeMap: ICommonTileSettings {
 
-        void Execute<RW>(int z, RW map, NativeArray<float> args) 
+        void Execute<RW>(int z, RW map, NativeSlice<float> args) 
             where  RW : struct, IRWTile;
     }
-
 }

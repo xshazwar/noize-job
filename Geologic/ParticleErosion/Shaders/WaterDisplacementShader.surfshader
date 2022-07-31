@@ -1,0 +1,210 @@
+
+BEGIN_OPTIONS
+   // Tessellation "Distance"
+   Queue "Transparent"
+   GrabPass { "_Grab" }
+   Alpha "Blend"
+END_OPTIONS
+
+BEGIN_PROPERTIES
+   [NoScaleOffset]_Albedo ("Albedo", 2D) = "white" {}
+   [Normal][NoScaleOffset]_Normal ("Normal", 2D) = "bump" {}
+   // [NoScaleOffset]_height_Map ("Height Map", 2D) = "black" {}
+   // _DisplacementAmount("Displacement Amount", Range(0,2)) = 0.5
+   // _DisplacementMipBias("Displacement Mip Bias", Range(0,6)) = 2
+   // _TessSubdiv("Tessellation Subdivisions", Range(2, 24)) = 8
+   // _TessMinDistance("Tessellation Min Distance", Float) = 0
+   // _TessMaxDistance("Tessellation Max Distance", Float) = 35
+
+   _Mesh_Res ("Mesh Resolution", Float) = 0
+   _Data_Res ("Data Resolution", Float) = 0
+   _Mesh_Size ("Mesh Size", Float) = 0
+   _Height ("Height", Float) = 1000
+   
+
+END_PROPERTIES
+
+
+BEGIN_CBUFFER
+   // float _height_Map;
+   // float _DisplacementAmount;
+   // float _DisplacementMipBias;
+   // float _TessSubdiv;
+   // float _TessMinDistance;
+   // float _TessMaxDistance;
+   
+
+   float _Height;
+   float _Mesh_Res;
+   float _Data_Res;
+   float _Mesh_Size;
+   StructuredBuffer<float> _TerrainValues;
+   StructuredBuffer<float> _WaterValues;
+END_CBUFFER
+
+BEGIN_DEFINES
+   #pragma multi_compile_instancing
+   #pragma instancing_options procedural:ConfigureProcedural
+   #include "Flow.cginc"
+END_DEFINES
+
+BEGIN_CODE
+
+   int DEAD;
+   float MESH_RATIO;
+   float4 _CameraDepthTexture_TexelSize;
+   const float MIN_WATER = .00000000001;
+   const float NAN = sqrt(-1);
+
+   
+
+   void ConfigureProcedural () {
+   #if defined(UNITY_PROCEDURAL_INSTANCING_ENABLED)
+      MESH_RATIO = _Mesh_Size / (_Mesh_Res - 1);
+      DEAD = (int) (_Data_Res - _Mesh_Res) / 2;
+
+   #endif
+   }
+
+/*
+
+   Displacement
+
+*/
+
+   int Idx(int x, int z){
+      return  ((z + DEAD) * _Data_Res + (DEAD + x));
+   }
+
+   bool HasWater(int x, int z){
+      return _WaterValues[Idx(x, z)] > MIN_WATER;
+   }
+   
+   void AreaWater(int x, int z, inout bool neighborsWater, inout float maxNeigborTH, inout float minDryNeighborHeight){
+      // TODO there's a small artifact that needs: inout float minDryNeighborHeight
+      // 
+      float total = 0;
+      int xt = 0;
+      int zt = 0;
+      float neighborwater = 0;
+      float neighbordry = 0;
+      float neighborTH = 0;
+      for(int xi = -2; xi <= 2; xi ++){
+         for(int zi = -2; zi <= 2; zi ++){
+            if(xi == 0 && zi == 0){ continue; }
+            xt = x + xi;
+            zt = z + zi;
+            neighborwater = _WaterValues[Idx(xt, zt)];
+            neighbordry = _TerrainValues[Idx(xt, zt)];
+            minDryNeighborHeight = neighborwater < MIN_WATER ? min(minDryNeighborHeight, neighbordry) : minDryNeighborHeight;
+            neighborTH = neighborwater + neighbordry;
+            neighborsWater =  neighborwater > MIN_WATER || neighborsWater;
+            maxNeigborTH = neighborwater > MIN_WATER ? max(maxNeigborTH, neighborTH): maxNeigborTH;
+         }
+      }
+      return;
+   }
+
+   float FloodedTerrainHeight(int x, int z){
+      return (_WaterValues[Idx(x, z)] + _TerrainValues[Idx(x, z)]) * _Height;
+   }
+
+   float VertexHeight(int x, int z){
+      if (HasWater(x, z)){
+         return FloodedTerrainHeight(x,z);
+      }
+      bool neighborsWater = false;
+      float maxNeigborTH = 0;
+      float minDryNeighborHeight = 1e+10f;
+      float terrainHeight = _TerrainValues[Idx(x, z)];
+      AreaWater(x, z, neighborsWater, maxNeigborTH, minDryNeighborHeight);
+      return neighborsWater && (maxNeigborTH < terrainHeight) && (minDryNeighborHeight > maxNeigborTH) ? maxNeigborTH * _Height : sqrt(-1);
+   }
+
+   void ApplyNormal(inout VertexData v, in float x, in float z){
+      v.normal = float3(0, 1, 0);
+      return;
+   }
+
+/*
+
+   LookingThroughWater
+
+*/
+
+   float3 _WaterFogColor;
+   float _WaterFogDensity;
+   float _RefractionStrength;
+
+   float2 AlignWithGrabTexel (float2 uv) {
+      #if UNITY_UV_STARTS_AT_TOP
+         if (_CameraDepthTexture_TexelSize.y < 0) {
+            uv.y = 1 - uv.y;
+         }
+      #endif
+
+      return
+         (floor(uv * _CameraDepthTexture_TexelSize.zw) + 0.5) *
+         abs(_CameraDepthTexture_TexelSize.xy);
+   }
+
+   float3 ColorBelowWater (float4 screenPos, float3 tangentSpaceNormal) {
+      float2 uvOffset = tangentSpaceNormal.xy * _RefractionStrength;
+      uvOffset.y *=
+         _CameraDepthTexture_TexelSize.z * abs(_CameraDepthTexture_TexelSize.y);
+      float2 uv = AlignWithGrabTexel((screenPos.xy + uvOffset) / screenPos.w);
+      
+      float backgroundDepth = GetLinearEyeDepth(uv);
+      float surfaceDepth = UNITY_Z_0_FAR_FROM_CLIPSPACE(screenPos.z);
+      float depthDifference = backgroundDepth - surfaceDepth;
+      
+      uvOffset *= saturate(depthDifference);
+      uv = AlignWithGrabTexel((screenPos.xy + uvOffset) / screenPos.w);
+      backgroundDepth = GetLinearEyeDepth(uv);
+      depthDifference = backgroundDepth - surfaceDepth;
+      
+      float3 backgroundColor = GetSceneColor(uv).rgb;
+      float fogFactor = exp2(-_WaterFogDensity * depthDifference);
+      return lerp(_WaterFogColor, backgroundColor, fogFactor);
+   }
+
+   TEXTURE2D(_Albedo);
+   SAMPLER(sampler_Albedo);
+   TEXTURE2D(_Normal);
+   SAMPLER(sampler_Normal);
+   TEXTURE2D(_height_Map);
+   SAMPLER(sampler_Height);
+
+   void ModifyVertex(inout VertexData v, inout ExtraV2F d){
+   #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
+      // offset is due to method of creating mesh, coords are unit sized centered on 0
+      int x = (v.vertex.x + 0.5) * _Mesh_Res;
+      int z = (v.vertex.z + 0.5) * _Mesh_Res;
+      ApplyNormal(v, v.vertex.x * _Mesh_Res, v.vertex.z * _Mesh_Res);
+      v.vertex.x = (0.5 + v.vertex.x) * _Mesh_Size + ( MESH_RATIO );
+      v.vertex.z = (0.5 + v.vertex.z) * _Mesh_Size + ( MESH_RATIO );
+      v.vertex.y = VertexHeight(x, z);
+   #else
+      v.vertex.x = v.vertex.x; // * 2000 / 356;
+      v.vertex.z = v.vertex.z; // * 2000 / 356;
+      v.vertex.y = -1000;
+   #endif
+	}
+
+   void SurfaceFunction(inout Surface o, ShaderData d)
+   {
+      #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
+         // o.Albedo = 1 - (half3(0, 0,.5) * GetSceneColor(d.screenUV));
+         o.Albedo = half3(0, 0,.5);
+         o.Alpha = .2;
+         o.Emission = ColorBelowWater(d.screenPos, o.Normal) * (1 - o.Alpha);
+      #else
+         half4 c = SAMPLE_TEXTURE2D(_Albedo, sampler_Albedo, d.texcoord0.xy);
+         o.Albedo = c.rgb;
+         o.Alpha = c.a;
+         o.Normal = UnpackNormal(SAMPLE_TEXTURE2D(_Normal, sampler_Normal, d.texcoord0.xy));
+      #endif
+   }
+
+END_CODE
+
