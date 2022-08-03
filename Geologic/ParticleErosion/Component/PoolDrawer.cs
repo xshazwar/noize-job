@@ -36,6 +36,7 @@ namespace xshazwar.noize.geologic {
         public PipelineStateManager stateManager;
         private NativeArray<float> poolMap;
         private NativeArray<float> heightMap;
+        private NativeParallelMultiHashMap<PoolKey, int> drainToMinima;
         private NativeParallelHashMap<int, int> catchment;
         private NativeParallelHashMap<PoolKey, Pool> pools;
         public NativeList<PoolUpdate> poolUpdates;
@@ -106,7 +107,9 @@ namespace xshazwar.noize.geologic {
                 !stateManager.BufferExists<NativeParallelHashMap<int, int>>(getBufferName("PARTERO_CATCHMENT")),
                 stateManager.IsLocked<NativeParallelHashMap<int, int>>(getBufferName("PARTERO_CATCHMENT")),
                 !stateManager.BufferExists<NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS")),
-                stateManager.IsLocked<NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS"))
+                stateManager.IsLocked<NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS")),
+                !stateManager.BufferExists<NativeParallelMultiHashMap<PoolKey, int>>(getBufferName("PARTERO_DRAIN_TO_MINIMA")),
+                stateManager.IsLocked<NativeParallelMultiHashMap<PoolKey, int>>(getBufferName("PARTERO_DRAIN_TO_MINIMA"))
             };
             if(notReady.Contains<bool>(true)){
                 Debug.Log("PoolDrawerNotready!");
@@ -124,6 +127,7 @@ namespace xshazwar.noize.geologic {
                 return;
             }
             jobctl = new StandAloneJobHandler();
+            drainToMinima = stateManager.GetBuffer<PoolKey, int, NativeParallelMultiHashMap<PoolKey, int>>(getBufferName("PARTERO_DRAIN_TO_MINIMA"), generatorResolution);
             pools = stateManager.GetBuffer<PoolKey, Pool, NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS"), generatorResolution * generatorResolution);
             poolUpdates = stateManager.GetBuffer<PoolUpdate, NativeList<PoolUpdate>>(getBufferName("PARTERO_FAKE_POOLUPDATE"), 2 * pools.Count());
             catchment = stateManager.GetBuffer<int, int, NativeParallelHashMap<int, int>>(getBufferName("PARTERO_CATCHMENT"), generatorResolution * generatorResolution);
