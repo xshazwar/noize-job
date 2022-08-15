@@ -50,8 +50,8 @@ namespace xshazwar.noize.geologic {
         );
 
         void SolvePoolHeirarchy(
-            NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
-            NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
+            NativeParallelMultiHashMap<int, int> boundary_BM,
+            NativeParallelMultiHashMap<int, int> boundary_MB,
             NativeParallelHashMap<int, int> catchmentMap,
             UnsafeParallelHashMap<PoolKey, Pool> pools,
             ProfilerMarker? profiler = null

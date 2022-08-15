@@ -120,8 +120,8 @@ namespace xshazwar.noize.geologic {
             NativeSlice<float> outMap,
             NativeArray<Cardinal> flow,
             NativeList<int> minimas,
-            NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
-            NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
+            NativeParallelMultiHashMap<int, int> boundary_BM,
+            NativeParallelMultiHashMap<int, int> boundary_MB,
             NativeParallelHashMap<int, int> catchmentMap,
             int resolution,
             JobHandle dependency
@@ -130,8 +130,8 @@ namespace xshazwar.noize.geologic {
             
             var job = new ParticlePoolCollapseJob {
                 minimas = minimas,
-                boundaryWriterBM = boundaryMapMemberToMinima.AsParallelWriter(),
-                boundaryWriterMB = boundaryMapMinimaToMembers.AsParallelWriter(),
+                boundaryWriterBM = boundary_BM.AsParallelWriter(),
+                boundaryWriterMB = boundary_MB.AsParallelWriter(),
                 catchmentWriter = catchmentMap.AsParallelWriter()
             };
             job.poolJob = new FlowSuperPosition();
@@ -150,8 +150,8 @@ namespace xshazwar.noize.geologic {
             NativeSlice<float> outMap,
             NativeArray<Cardinal> flow,
             NativeList<int> minimas,
-            NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
-            NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
+            NativeParallelMultiHashMap<int, int> boundary_BM,
+            NativeParallelMultiHashMap<int, int> boundary_MB,
             NativeParallelHashMap<int, int> catchmentMap,
             int resolution,
             JobHandle dependency
@@ -177,8 +177,8 @@ namespace xshazwar.noize.geologic {
             // compute outflow this is RO
 			NativeSlice<float> heightMap,
             NativeSlice<float> outMap,
-            NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
-            NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
+            NativeParallelMultiHashMap<int, int> boundary_BM,
+            NativeParallelMultiHashMap<int, int> boundary_MB,
             NativeParallelHashMap<int, int> catchmentMap,
             NativeParallelHashMap<PoolKey, Pool> pools,
             NativeList<PoolKey> drainKeys,
@@ -188,8 +188,8 @@ namespace xshazwar.noize.geologic {
 		)
         {
             var job = new DrainSolvingJob {
-                boundaryBM = boundaryMapMemberToMinima,
-                boundaryMB = boundaryMapMinimaToMembers,
+                boundaryBM = boundary_BM,
+                boundaryMB = boundary_MB,
                 catchment = catchmentMap,
                 pools = pools,
                 drainKeys = drainKeys,
@@ -206,8 +206,8 @@ namespace xshazwar.noize.geologic {
     public delegate JobHandle DrainSolvingJobDelegate(
             NativeSlice<float> heightMap,
             NativeSlice<float> outMap,
-            NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima,
-            NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers,
+            NativeParallelMultiHashMap<int, int> boundary_BM,
+            NativeParallelMultiHashMap<int, int> boundary_MB,
             NativeParallelHashMap<int, int> catchmentMap,
             NativeParallelHashMap<PoolKey, Pool> pools,
             NativeList<PoolKey> drainKeys,

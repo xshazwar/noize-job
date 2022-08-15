@@ -81,8 +81,9 @@ namespace xshazwar.noize.geologic {
             // TODO write a native container that we can resize inside the generation job
             // so that we don't have to live with oversized Persistent allocations everywhere
             //  https://forum.unity.com/threads/how-to-allocate-nativecontainer-inside-long-running-job.902963/
-            NativeParallelMultiHashMap<int, int> boundaryMapMemberToMinima = requirements.stageManager.GetBuffer<int, int, NativeParallelMultiHashMap<int, int>>(getBufferName((GeneratorData)requirements.data,"PARTERO_BOUNDARY_BM"), currentSize);
-            NativeParallelMultiHashMap<int, int> boundaryMapMinimaToMembers = requirements.stageManager.GetBuffer<int, int, NativeParallelMultiHashMap<int, int>>(getBufferName((GeneratorData)requirements.data,"PARTERO_BOUNDARY_MB"), currentSize);
+            NativeParallelMultiHashMap<int, int> boundary_BM = requirements.stageManager.GetBuffer<int, int, NativeParallelMultiHashMap<int, int>>(getBufferName((GeneratorData)requirements.data,"PARTERO_BOUNDARY_BM"), currentSize);
+            NativeParallelMultiHashMap<int, int> boundary_MB = requirements.stageManager.GetBuffer<int, int, NativeParallelMultiHashMap<int, int>>(getBufferName((GeneratorData)requirements.data,"PARTERO_BOUNDARY_MB"), currentSize);
+            // TODO ^^ resize these buffers after they're complete to save memory 
             NativeParallelHashMap<int, int> catchmentMap = requirements.stageManager.GetBuffer<int, int, NativeParallelHashMap<int, int>>(getBufferName((GeneratorData)requirements.data,"PARTERO_CATCHMENT"), dataLength);
             NativeParallelHashMap<PoolKey, Pool> pools = requirements.stageManager.GetBuffer<PoolKey, Pool, NativeParallelHashMap<PoolKey, Pool>>(getBufferName((GeneratorData)requirements.data,"PARTERO_POOLS"), 512);
             Clean();
@@ -101,8 +102,8 @@ namespace xshazwar.noize.geologic {
                 tmp,
                 flow,
                 minimas,
-                boundaryMapMemberToMinima,
-                boundaryMapMinimaToMembers,
+                boundary_BM,
+                boundary_MB,
                 catchmentMap,
                 d.resolution,
                 reduce
@@ -111,8 +112,8 @@ namespace xshazwar.noize.geologic {
             JobHandle fourth = drainSolveJob(
                 d.data,
                 tmp,
-                boundaryMapMemberToMinima,
-                boundaryMapMinimaToMembers,
+                boundary_BM,
+                boundary_MB,
                 catchmentMap,
                 pools,
                 drainKeys,
@@ -121,10 +122,10 @@ namespace xshazwar.noize.geologic {
                 second
             );
             JobHandle fifth = PoolCreationJob.ScheduleParallel(
-                d.data, tmp, drainKeys, drainToMinima, catchmentMap, boundaryMapMinimaToMembers, pools, d.resolution, fourth);
+                d.data, tmp, drainKeys, drainToMinima, catchmentMap, boundary_MB, pools, d.resolution, fourth);
             JobHandle sixth = SolvePoolHeirarchyJob.ScheduleRun(drainToMinima, pools, fifth);
             JobHandle lockHandle = lockJob(sixth);
-            JobHandle seventh = PoolDrawDebugAndCleanUpJob.ScheduleRun(d.data, tmp, boundaryMapMemberToMinima, boundaryMapMinimaToMembers, catchmentMap, pools, d.resolution, lockHandle, !Draw2d);
+            JobHandle seventh = PoolDrawDebugAndCleanUpJob.ScheduleRun(d.data, tmp, boundary_BM, boundary_MB, catchmentMap, pools, d.resolution, lockHandle, !Draw2d);
             jobHandle = TileHelpers.SWAP_RWTILE(d.data, tmp, seventh);
             // Only locking one of the 4 buffers because I'm feeling lazy... this will bite the ass later
             string bufferName = getBufferName((GeneratorData)requirements.data,"PARTERO_POOLS");

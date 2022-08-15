@@ -90,24 +90,41 @@ namespace xshazwar.noize.geologic {
                 n = n
             };
         }
+
+        public bool Exists(){
+            return this.idx > -1;
+        }
     
     }
 
     public struct Pool {
+
         public int indexMinima;
         public float minimaHeight;
         public int indexDrain;
-        public int memberCount;
         public float drainHeight;
-        public float capacity;
-        public float volume;
+
+    // Properties for Filling
+
+        // a pool can only have 3 peers in our grid layout 
+        // in the worst case of a confluence at a drain and cardinal neighbors
+        // distinct from one another by diagonals
+ 
+        public PoolKey peer0;
+        public PoolKey peer1;
+        public PoolKey peer2;
+        
+        // In cases of a pool with peers. When all are full a new pool is created. This is the reference
+        public PoolKey supercededBy;
+
+        public int memberCount; // total verts
+        public float capacity;  // in normalized height units (a single vert can occupy a volume of 0 -> 1)
+        public float volume;    // in normalized height units
+
         // Beta1 for regression
         public float b1;
         // Beta2 for regression
         public float b2;
-        
-        // In cases where two pools flow into each other. When both are full a new pool is created. This is the reference
-        public PoolKey supercededBy;
 
         public void Init(int indexMinima_, float minimaHeight_, int indexDrain_, float drainHeight_){
             indexMinima = indexMinima_;
@@ -115,6 +132,9 @@ namespace xshazwar.noize.geologic {
             indexDrain = indexDrain_;
             drainHeight = drainHeight_;
             volume = 0f;
+            peer0 = new PoolKey {idx = -1}; // idx : -1 === DNE
+            peer1 = new PoolKey {idx = -1};
+            peer2 = new PoolKey {idx = -1};
             supercededBy = new PoolKey {idx = -1};
         }
 
@@ -132,6 +152,23 @@ namespace xshazwar.noize.geologic {
             }
             b1 = minimaHeight * Regression.SCALE;
             b2 = ((drainHeight - minimaHeight) * Regression.SCALE) / log(capacity + 1f);
+        }
+
+        public bool HasParent(){
+            return this.supercededBy.Exists();
+        }
+
+        public void AddPeer(int peerIdx, PoolKey key){
+            if(peerIdx == 0) peer0 = key;
+            else if(peerIdx == 1) peer1 = key;
+            else if(peerIdx == 2) peer2 = key;
+        }
+
+        public PoolKey GetPeer(int peerIdx){
+            if(peerIdx == 0) return peer0;
+            else if(peerIdx == 1) return peer1;
+            else if(peerIdx == 2) return peer2;
+            throw new ArgumentException("only three valid peers");
         }
     }
 

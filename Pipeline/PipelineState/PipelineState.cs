@@ -33,6 +33,7 @@ namespace xshazwar.noize.pipeline {
     }
     public interface IManageBuffer<out T> : IBaseBufferManager {
         public T GetBuffer(string key, int size);
+        public T GetBuffer(string key);
     }
 
 /*
@@ -182,6 +183,16 @@ namespace xshazwar.noize.pipeline {
             if (!buffers.ContainsKey(key)){
                 Debug.Log($"<{typeof(C)}>: {key} is not allocated, creating instance");
                 buffers[key] = CreateInstance(size);
+            }
+            return buffers[key];
+        }
+
+        public C GetBuffer(string key){
+            if (buffers == null){
+                buffers = new Dictionary<string, C>();
+            }
+            if (!buffers.ContainsKey(key)){
+                throw new ArgumentException($"No allocated buffer named {key}");
             }
             return buffers[key];
         }

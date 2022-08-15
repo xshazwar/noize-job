@@ -676,6 +676,30 @@ namespace xshazwar.noize.geologic {
             profiler?.End();
         }
 
+        public void SolvePoolPeering(
+            ref NativeArray<PoolKey> sortedKeys,
+            ref NativeParallelHashMap<PoolKey, Pool> pools){
+            // we just brute force this
+            int found = 0;
+            Pool current;
+            Pool probe;
+
+            int x = 0;
+            for (int i = 0; i < sortedKeys.Length; i++){
+                current = pools[sortedKeys[i]];
+                x = 0;
+                while( x < sortedKeys.Length && found < 3){
+                    if (i == x) continue;
+                    if (pools[sortedKeys[i]].indexDrain == pools[sortedKeys[x]].indexDrain){
+                        pools[sortedKeys[i]].AddPeer(found, sortedKeys[x]);
+                        found++;
+                    }
+                }
+            }
+
+        }
+
+        // solve for supercededBy
         public void SolveUpstreamPoolPrecidence(
             PoolKey key,
             int poolOrder,
@@ -694,7 +718,7 @@ namespace xshazwar.noize.geologic {
                     while(pools.ContainsKey(probe)){
                         pools.TryGetValue(probe, out poolProbe);
                         if(probe.Equals(key)) Debug.LogError($"{key.idx} This should not happen!");
-                        if (poolProbe.supercededBy.idx == -1){
+                        if (poolProbe.HasParent()){
                             poolProbe.supercededBy = key;
                             pools.Remove(probe);
                             pools.TryAdd(probe, poolProbe);
@@ -768,13 +792,14 @@ namespace xshazwar.noize.geologic {
             NativeArray<PoolKey> poolKeys = pools.GetKeyArray(Allocator.Temp);
             NativeList<int> minimas = new NativeList<int>(32, Allocator.Temp);
             poolKeys.Sort();
+            SolvePoolPeering(ref poolKeys, ref pools);
             for(int i = 0; i < poolKeys.Length; i ++){
                 referenceKey = poolKeys[i];
                 pools.TryGetValue(referenceKey, out referencePool);
                 referenceKey.idx = referencePool.indexDrain;
                 AddUniquePoolValues(referenceKey, ref drainToMinima, ref minimas);
                 referenceKey = poolKeys[i];
-                SolveUpstreamPoolPrecidence(referenceKey, referenceKey.order, ref minimas, ref pools);
+                SolveUpstreamPoolPrecidence(referenceKey, referenceKey.order, ref minimas, ref pools);//, ref drainToMinima);
                 minimas.Clear();
             }
         }

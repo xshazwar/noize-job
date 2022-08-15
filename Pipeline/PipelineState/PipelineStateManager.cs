@@ -30,7 +30,7 @@ namespace xshazwar.noize.pipeline {
         // request a buffer by type and initial allocation like:
         // GetBuffer<float, NativeList<float>>("256_waterMap.001x001z", 256*256);
 
-        public T GetBuffer<V, T> (string name, int size)  where V: unmanaged, IEquatable<V> where T: struct {
+        public T GetBuffer<V, T> (string name, int size = -1)  where V: unmanaged, IEquatable<V> where T: struct {
             if(states == null){
                 states = new Dictionary<Type, dynamic>();
             }
@@ -40,12 +40,16 @@ namespace xshazwar.noize.pipeline {
                     InitLinearState<V, T>();
                 }
                 IManageBuffer<T> manager = states[typeof(T)];
-                return (T) ((IManageBuffer<T>) states[typeof(T)]).GetBuffer(name, size);
+                if (size > -1){
+                    return (T) ((IManageBuffer<T>) states[typeof(T)]).GetBuffer(name, size);
+                }else{
+                    return (T) ((IManageBuffer<T>) states[typeof(T)]).GetBuffer(name);
+                }
             }
             throw new ArgumentException("type not supported");
         }
 
-        public T GetBuffer<K, V, T> (string name, int size)  where K: struct, IEquatable<K> where V : struct {
+        public T GetBuffer<K, V, T> (string name, int size = -1)  where K: struct, IEquatable<K> where V : struct {
             if(states == null){
                 states = new Dictionary<Type, dynamic>();
             }
@@ -55,7 +59,13 @@ namespace xshazwar.noize.pipeline {
                     InitKVState<K, V, T>();
                 }
                 IManageBuffer<T> manager = states[typeof(T)];
-                return (T) ((IManageBuffer<T>) states[typeof(T)]).GetBuffer(name, size);
+                if (size > -1)
+                {
+                    return (T) ((IManageBuffer<T>) states[typeof(T)]).GetBuffer(name, size);
+                }else{
+                    return (T) ((IManageBuffer<T>) states[typeof(T)]).GetBuffer(name);
+                }
+                
             }
             throw new ArgumentException("type not supported");
         }

@@ -34,11 +34,14 @@ namespace xshazwar.noize.geologic {
         private MaterialPropertyBlock materialProps;
         public StandAloneJobHandler jobctl;
         public PipelineStateManager stateManager;
+
         private NativeArray<float> poolMap;
         private NativeArray<float> heightMap;
         private NativeParallelHashMap<int, int> catchment;
         private NativeParallelHashMap<PoolKey, Pool> pools;
+        private NativeParallelMultiHashMap<int, int> boundary_BM;
         public NativeList<PoolUpdate> poolUpdates;
+
         public bool paramsReady = false;
         public bool ready = false;
         public bool updateWater = false;
@@ -106,13 +109,12 @@ namespace xshazwar.noize.geologic {
                 !stateManager.BufferExists<NativeParallelHashMap<int, int>>(getBufferName("PARTERO_CATCHMENT")),
                 stateManager.IsLocked<NativeParallelHashMap<int, int>>(getBufferName("PARTERO_CATCHMENT")),
                 !stateManager.BufferExists<NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS")),
-                stateManager.IsLocked<NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS"))
+                stateManager.IsLocked<NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS")),
+                !stateManager.BufferExists<NativeParallelMultiHashMap<int, int>>(getBufferName("PARTERO_BOUNDARY_BM")),
+                stateManager.IsLocked<NativeParallelMultiHashMap<int, int>>(getBufferName("PARTERO_BOUNDARY_BM"))
             };
             if(notReady.Contains<bool>(true)){
                 Debug.Log("PoolDrawerNotready!");
-                // foreach(bool b in notReady){
-                //     Debug.Log(b);
-                // }
                 return false;
             }
             Debug.Log("PoolDrawer Depends ok!");
@@ -124,11 +126,14 @@ namespace xshazwar.noize.geologic {
                 return;
             }
             jobctl = new StandAloneJobHandler();
-            pools = stateManager.GetBuffer<PoolKey, Pool, NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS"), generatorResolution * generatorResolution);
-            poolUpdates = stateManager.GetBuffer<PoolUpdate, NativeList<PoolUpdate>>(getBufferName("PARTERO_FAKE_POOLUPDATE"), 2 * pools.Count());
-            catchment = stateManager.GetBuffer<int, int, NativeParallelHashMap<int, int>>(getBufferName("PARTERO_CATCHMENT"), generatorResolution * generatorResolution);
-            poolMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_POOL"), generatorResolution * generatorResolution);
-            heightMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT"), generatorResolution * generatorResolution);
+
+            pools = stateManager.GetBuffer<PoolKey, Pool, NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS"));
+            poolUpdates = stateManager.GetBuffer<PoolUpdate, NativeList<PoolUpdate>>(getBufferName("PARTERO_FAKE_POOLUPDATE"));
+            catchment = stateManager.GetBuffer<int, int, NativeParallelHashMap<int, int>>(getBufferName("PARTERO_CATCHMENT"));
+            poolMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_POOL"));
+            heightMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT"));
+            boundary_BM = stateManager.GetBuffer<int, int, NativeParallelMultiHashMap<int, int>>(getBufferName("PARTERO_BOUNDARY_BM"));
+
             poolBuffer = new ComputeBuffer(heightMap.Length, 4); // sizeof(float)
             heightBuffer = new ComputeBuffer(heightMap.Length, 4); // sizeof(float)
             argsBuffer = new ComputeBuffer(1, args.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
