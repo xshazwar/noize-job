@@ -529,7 +529,6 @@ namespace xshazwar.noize.geologic {
                 }
                 key.n += 1;
             }
-            // Debug.LogWarning($"Adding new drain {key.idx}: {key.order}n{key.n}");
             for(int i = 0; i < minimas.Length; i++){
                 drainToMinima.Add(key, minimas[i]);
             }
@@ -854,15 +853,19 @@ namespace xshazwar.noize.geologic {
                     update.volume -= (pool.capacity - pool.volume);
                     pool.volume = pool.capacity;
                     pools[key] = pool;
+                    // TODO
+                    // need to look at peer pools here
+                    // ->> pools that have the same drainIdx should share in the overflow from any member (equally?)
+                        // for minutia in DrainToMinutia[drainidx]
+                            // if not full -> thirsty++
+                        // for minutia in DrainToMinutia[drainidx]
+                            // if not full -> pool.volume += available volume / thirsty up to capacity
+                        // if excess capacity ^^ roll up to supercederBy which should be the same for all peer pools
                     if(pool.supercededBy.idx == -1){
                         // Debug.Log($"pool {key.idx}:{key.order}n{key.n} overfilled by {update.volume}, no successor -> evaporating {pool.volume} / {pool.capacity}");
                         // no place else to dump the water
                         return;
                     }
-                    // go up the chain to the next pool
-                    // if(pool.supercededBy.idx != -1){
-                    //     Debug.LogWarning($"rolling up {key.idx}:{key.order}n{key.n} -> {pool.supercededBy.idx}:{pool.supercededBy.order}n{pool.supercededBy.n}");
-                    // }
                     key = pool.supercededBy;
                 }
             }else{

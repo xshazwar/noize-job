@@ -35,7 +35,6 @@ namespace xshazwar.noize.geologic {
         [NativeDisableContainerSafetyRestriction]
         private NativeList<int> minimas;
         private NativeList<PoolKey> drainKeys;
-        private NativeParallelMultiHashMap<PoolKey, int> drainToMinima;
         private int currentSize = 0;
 
         private string getBufferName(GeneratorData d, string alias){
@@ -49,6 +48,7 @@ namespace xshazwar.noize.geologic {
             bool[] notReady = new bool[] {
                 job.stageManager.IsLocked<NativeParallelMultiHashMap<int, int>>(getBufferName((GeneratorData)job.data,"PARTERO_BOUNDARY_BM")),
                 job.stageManager.IsLocked<NativeParallelMultiHashMap<int, int>>(getBufferName((GeneratorData)job.data,"PARTERO_BOUNDARY_MB")),
+                job.stageManager.IsLocked<NativeParallelMultiHashMap<PoolKey, int>>(getBufferName((GeneratorData)job.data,"PARTERO_DRAIN_TO_MINIMA")),
                 job.stageManager.IsLocked<NativeParallelHashMap<int, int>>(getBufferName((GeneratorData)job.data,"PARTERO_CATCHMENT")),
                 job.stageManager.IsLocked<NativeParallelHashMap<PoolKey, Pool>>(getBufferName((GeneratorData)job.data,"PARTERO_POOLS"))
             };
@@ -64,7 +64,6 @@ namespace xshazwar.noize.geologic {
                 tmp.Dispose();
                 flow.Dispose();
                 drainKeys.Dispose();
-                drainToMinima.Dispose();
                 minimas.Dispose();
             }
             currentSize = size;
@@ -72,7 +71,6 @@ namespace xshazwar.noize.geologic {
             flow = new NativeArray<Cardinal>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             minimas = new NativeList<int>(32, Allocator.Persistent);
             drainKeys = new NativeList<PoolKey>(size, Allocator.Persistent);
-            drainToMinima = new NativeParallelMultiHashMap<PoolKey, int>(dataLength, Allocator.Persistent);
         }
 
         public override void Schedule(PipelineWorkItem requirements, JobHandle dependency ){
@@ -84,8 +82,10 @@ namespace xshazwar.noize.geologic {
             NativeParallelMultiHashMap<int, int> boundary_BM = requirements.stageManager.GetBuffer<int, int, NativeParallelMultiHashMap<int, int>>(getBufferName((GeneratorData)requirements.data,"PARTERO_BOUNDARY_BM"), currentSize);
             NativeParallelMultiHashMap<int, int> boundary_MB = requirements.stageManager.GetBuffer<int, int, NativeParallelMultiHashMap<int, int>>(getBufferName((GeneratorData)requirements.data,"PARTERO_BOUNDARY_MB"), currentSize);
             // TODO ^^ resize these buffers after they're complete to save memory 
+            NativeParallelMultiHashMap<PoolKey, int> drainToMinima = requirements.stageManager.GetBuffer<PoolKey, int, NativeParallelMultiHashMap<PoolKey, int>>(getBufferName((GeneratorData)requirements.data,"PARTERO_DRAIN_TO_MINIMA"), dataLength);
             NativeParallelHashMap<int, int> catchmentMap = requirements.stageManager.GetBuffer<int, int, NativeParallelHashMap<int, int>>(getBufferName((GeneratorData)requirements.data,"PARTERO_CATCHMENT"), dataLength);
             NativeParallelHashMap<PoolKey, Pool> pools = requirements.stageManager.GetBuffer<PoolKey, Pool, NativeParallelHashMap<PoolKey, Pool>>(getBufferName((GeneratorData)requirements.data,"PARTERO_POOLS"), 512);
+            
             Clean();
             stream = new NativeStream(currentSize, Allocator.Persistent);
             JobHandle first = minimaJob(
@@ -139,9 +139,6 @@ namespace xshazwar.noize.geologic {
             if(drainKeys.IsCreated){
                 drainKeys.Clear();
             }
-            if(drainToMinima.IsCreated){
-                drainToMinima.Clear();
-            }
         }
 
         public override void OnDestroy()
@@ -150,7 +147,6 @@ namespace xshazwar.noize.geologic {
                 tmp.Dispose();
                 flow.Dispose();
                 drainKeys.Dispose();
-                drainToMinima.Dispose();
                 minimas.Dispose();
             }
         }
