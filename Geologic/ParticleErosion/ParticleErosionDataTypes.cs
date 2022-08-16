@@ -23,7 +23,7 @@ namespace xshazwar.noize.geologic {
     struct LazyFloatComparer: IComparer<float> {
         public int Compare(float a, float b){
             float diff = b - a;
-            if (abs(diff) < .000000001){
+            if (abs(diff) < .00000000001){
                 return 0;
             }
             if (diff > 0){
@@ -169,6 +169,13 @@ namespace xshazwar.noize.geologic {
             else if(peerIdx == 1) return peer1;
             else if(peerIdx == 2) return peer2;
             throw new ArgumentException("only three valid peers");
+        }
+
+        public int PeerCount(){
+            if(!peer0.Exists()) return 0;
+            if(!peer1.Exists()) return 1;
+            if(!peer2.Exists()) return 2;
+            return 3;
         }
     }
 

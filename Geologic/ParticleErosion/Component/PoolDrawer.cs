@@ -127,7 +127,6 @@ namespace xshazwar.noize.geologic {
                 return;
             }
             jobctl = new StandAloneJobHandler();
-<<<<<<< HEAD
 
             pools = stateManager.GetBuffer<PoolKey, Pool, NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS"));
             poolUpdates = stateManager.GetBuffer<PoolUpdate, NativeList<PoolUpdate>>(getBufferName("PARTERO_FAKE_POOLUPDATE"));
@@ -135,15 +134,8 @@ namespace xshazwar.noize.geologic {
             poolMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_POOL"));
             heightMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT"));
             boundary_BM = stateManager.GetBuffer<int, int, NativeParallelMultiHashMap<int, int>>(getBufferName("PARTERO_BOUNDARY_BM"));
-
-=======
             drainToMinima = stateManager.GetBuffer<PoolKey, int, NativeParallelMultiHashMap<PoolKey, int>>(getBufferName("PARTERO_DRAIN_TO_MINIMA"), generatorResolution);
-            pools = stateManager.GetBuffer<PoolKey, Pool, NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS"), generatorResolution * generatorResolution);
-            poolUpdates = stateManager.GetBuffer<PoolUpdate, NativeList<PoolUpdate>>(getBufferName("PARTERO_FAKE_POOLUPDATE"), 2 * pools.Count());
-            catchment = stateManager.GetBuffer<int, int, NativeParallelHashMap<int, int>>(getBufferName("PARTERO_CATCHMENT"), generatorResolution * generatorResolution);
-            poolMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_POOL"), generatorResolution * generatorResolution);
-            heightMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT"), generatorResolution * generatorResolution);
->>>>>>> d742c24176435bfa33102c0499cc3bb53052edd7
+
             poolBuffer = new ComputeBuffer(heightMap.Length, 4); // sizeof(float)
             heightBuffer = new ComputeBuffer(heightMap.Length, 4); // sizeof(float)
             argsBuffer = new ComputeBuffer(1, args.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
@@ -228,6 +220,7 @@ namespace xshazwar.noize.geologic {
                 new NativeSlice<float>(poolMap),
                 new NativeSlice<float>(heightMap),
                 catchment,
+                boundary_BM,
                 pools,
                 generatorResolution,
                 // second

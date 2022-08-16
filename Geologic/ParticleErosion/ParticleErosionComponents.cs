@@ -681,7 +681,6 @@ namespace xshazwar.noize.geologic {
             // we just brute force this
             int found = 0;
             Pool current;
-            Pool probe;
 
             int x = 0;
             for (int i = 0; i < sortedKeys.Length; i++){
@@ -729,6 +728,9 @@ namespace xshazwar.noize.geologic {
                 }
             }
         }
+
+        // TODO remove setups, I think it's better to setup the struct explicitly for steps that require
+        // it than to have a method for each case
 
         public void SetupCollapse(
             int resolution,
@@ -781,6 +783,9 @@ namespace xshazwar.noize.geologic {
             minimas.Dispose();
         }
 
+        // TODO
+        // public void CreatePoolEvent(int x, int z, float volume, ref NativeList<PoolUpdate>.Writer eventStream){}
+
         // Single
         public void LinkPoolHeirarchy(
             ref NativeParallelMultiHashMap<PoolKey, int> drainToMinima,
@@ -804,7 +809,6 @@ namespace xshazwar.noize.geologic {
         }
 
         // Single
-
         public void ReducePoolUpdatesAndApply(NativeList<PoolUpdate> updates, ref NativeParallelHashMap<PoolKey, Pool> pools){
             // Updating the pools may require traversing the linked list in the pool values
             // so it's economical to combine updates to the same pool
@@ -850,9 +854,14 @@ namespace xshazwar.noize.geologic {
                         // pool's not full and we have no more water
                         return;
                     }
-                    update.volume -= (pool.capacity - pool.volume);
-                    pool.volume = pool.capacity;
-                    pools[key] = pool;
+                    BalancePeerPools(ref key, ref pool, ref update.volume, ref pools);
+                    if (update.volume <= 0f){
+                        return;
+                    }
+                    // update.volume -= (pool.capacity - pool.volume);
+                    // pool.volume = pool.capacity;
+                    // pools[key] = pool;
+
                     // TODO
                     // need to look at peer pools here
                     // ->> pools that have the same drainIdx should share in the overflow from any member (equally?)
@@ -875,27 +884,93 @@ namespace xshazwar.noize.geologic {
             Debug.LogWarning("We should not really ever get here?");
         }
 
+        public void BalancePeerPools( 
+            ref PoolKey pk,
+            ref Pool primaryPool,
+            ref float incomingVolume,
+            ref NativeParallelHashMap<PoolKey, Pool> pools
+        ){
+            // try to allocate all water to the primary pool
+            UpdatePoolPeerVolume(ref pk, ref primaryPool, ref incomingVolume, incomingVolume, ref pools);
+            int peers = primaryPool.PeerCount();
+            if(peers == 0) return;
+            Pool peerPool = new Pool();
+            PoolKey peerKey = new PoolKey();
+            float allocation = incomingVolume / (float) peers;
+            for(int i = 0; i < peers; i++){
+                peerKey = primaryPool.GetPeer(i);
+                pools.TryGetValue(peerKey, out peerPool);
+                UpdatePoolPeerVolume(ref peerKey, ref peerPool, ref incomingVolume, allocation, ref pools);
+            }
+            if (incomingVolume < .00000000000001f){
+                Debug.Log("truncated tiny excess value");
+                incomingVolume = 0f;
+            }
+        }
+
+        public void UpdatePoolPeerVolume(
+            ref PoolKey key,
+            ref Pool pool,
+            ref float availableWater,
+            float allocatedVolume,
+            ref NativeParallelHashMap<PoolKey, Pool> pools
+        ){
+            float newWater = min(allocatedVolume, pool.capacity - pool.volume);
+            pool.volume = pool.volume + newWater;
+            availableWater -= newWater;
+            pools[key] = pool;
+        }
+
         // Parallel
 
         public void DrawPoolLocation(
             int x,
             int z, 
-            ref NativeParallelHashMap<int, int> catchment,
+            ref NativeParallelHashMap<int, int> catchment,          // (member -> minima)
+            ref NativeParallelMultiHashMap<int, int> boundary_BM,   // ""
             ref NativeParallelHashMap<PoolKey, Pool> pools,
             ref NativeSlice<float> heightMap,
             ref NativeSlice<float> poolMap
         ){
             int idx = getIdx(x, z);
+            float terrainHeight = heightMap[idx];
             PoolKey key = new PoolKey {
                 idx = -1,
                 order = 1,
                 n = 0
             };
+            catchment.TryGetValue(idx, out key.idx);
+            // catchment members should be mutually exclusive with boundaries...
+            if(key.Exists()){
+                // is catchment
+                poolMap[idx] =  LocalHeightInPool(terrainHeight, ref key, ref pools);
+            }else{
+                // is boundary
+                NativeParallelMultiHashMap<int, int>.Enumerator minimaIter = boundary_BM.GetValuesForKey(idx);
+                float value = 0f;
+                while (minimaIter.MoveNext()){
+                    key = new PoolKey {
+                        idx = minimaIter.Current,
+                        order = 1,
+                        n = 0
+                    };
+                    value = max(
+                        LocalHeightInPool(terrainHeight, ref key, ref pools)
+                        , value);
+                }
+                poolMap[idx] = value;
+            }
+        }
+
+        public float LocalHeightInPool(
+            float terrainHeight,
+            ref PoolKey key,
+            ref NativeParallelHashMap<PoolKey, Pool> pools
+        ){
+            int depth = 0;
             Pool pool = new Pool(){
                 indexMinima = -1
             };
-            catchment.TryGetValue(idx, out key.idx);
-            int depth = 0;
             while(pools.ContainsKey(key)){
                 depth++;
                 pools.TryGetValue(key, out pool);
@@ -913,12 +988,13 @@ namespace xshazwar.noize.geologic {
                 }
             }
             if (pool.indexMinima == -1){
-                poolMap[idx] = 0f;
+                return 0f;
+                // poolMap[idx] = 0f;
             }else{
                 float value = 1f;
-                pool.EstimateHeight(heightMap[idx], out value);
-                poolMap[idx] = value;
-                
+                pool.EstimateHeight(terrainHeight, out value);
+                // poolMap[idx] = value;
+                return value;
             }
         }
 

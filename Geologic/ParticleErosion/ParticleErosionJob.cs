@@ -364,20 +364,22 @@ namespace xshazwar.noize.geologic {
         [ReadOnly]
         NativeParallelHashMap<int, int> catchment;
         [ReadOnly]
+        NativeParallelMultiHashMap<int, int> boundary_BM;
+        [ReadOnly]
         NativeParallelHashMap<PoolKey, Pool> pools;
         [ReadOnly]
         NativeSlice<float> heightMap;
         
         [NativeDisableParallelForRestriction]
         [NativeDisableContainerSafetyRestriction]
-        [WriteOnly]
+        // [WriteOnly]
         NativeSlice<float> poolMap;
 
         FlowSuperPosition poolJob;
 
         public void Execute(int z){
             for(int x = 0; x < res; x++){
-                poolJob.DrawPoolLocation(x, z, ref catchment, ref pools, ref heightMap, ref poolMap);
+                poolJob.DrawPoolLocation(x, z, ref catchment, ref boundary_BM, ref pools, ref heightMap, ref poolMap);
             }
         }
 
@@ -385,6 +387,7 @@ namespace xshazwar.noize.geologic {
             NativeSlice<float> poolMap,
             NativeSlice<float> heightMap,
             NativeParallelHashMap<int, int> catchment,
+            NativeParallelMultiHashMap<int, int> boundary_BM,
             NativeParallelHashMap<PoolKey, Pool> pools,
             int res,
             JobHandle deps
@@ -392,6 +395,7 @@ namespace xshazwar.noize.geologic {
             var job = new DrawPoolsJob {
                 res = res,
                 catchment = catchment,
+                boundary_BM = boundary_BM,
                 pools = pools,
                 heightMap = heightMap,
                 poolMap = poolMap,
