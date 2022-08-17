@@ -138,6 +138,10 @@ namespace xshazwar.noize.geologic {
             supercededBy = new PoolKey {idx = -1};
         }
 
+        public bool Exists(){
+            return indexMinima > -1;
+        }
+        
         public void EstimateHeight(float cellHeight, out float waterHeight){
             // wh == surfaceHeightAtMinima(volume) - cellHeight 
             waterHeight = (b1 + (b2 * log(math.max(volume + 1f, 1f)))) - cellHeight;

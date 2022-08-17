@@ -686,13 +686,20 @@ namespace xshazwar.noize.geologic {
             for (int i = 0; i < sortedKeys.Length; i++){
                 current = pools[sortedKeys[i]];
                 x = 0;
+                found = 0;
                 while( x < sortedKeys.Length && found < 3){
-                    if (i == x) continue;
-                    if (pools[sortedKeys[i]].indexDrain == pools[sortedKeys[x]].indexDrain){
-                        pools[sortedKeys[i]].AddPeer(found, sortedKeys[x]);
+                    if (i == x){
+                        // don't peer with yourself
+                        x++;
+                        continue;
+                    }
+                    if (current.indexDrain == pools[sortedKeys[x]].indexDrain){
+                        current.AddPeer(found, sortedKeys[x]);
                         found++;
                     }
+                    x++;
                 }
+                pools[sortedKeys[i]] = current;
             }
 
         }
@@ -716,10 +723,9 @@ namespace xshazwar.noize.geologic {
                     while(pools.ContainsKey(probe)){
                         pools.TryGetValue(probe, out poolProbe);
                         if(probe.Equals(key)) Debug.LogError($"{key.idx} This should not happen!");
-                        if (poolProbe.HasParent()){
+                        if (!poolProbe.HasParent()){
                             poolProbe.supercededBy = key;
-                            pools.Remove(probe);
-                            pools.TryAdd(probe, poolProbe);
+                            pools[probe] = poolProbe;
                             match = true;
                         }
                         probe.n += 1;
@@ -794,7 +800,7 @@ namespace xshazwar.noize.geologic {
             Pool referencePool;
             PoolKey referenceKey;
             NativeArray<PoolKey> poolKeys = pools.GetKeyArray(Allocator.Temp);
-            NativeList<int> minimas = new NativeList<int>(32, Allocator.Temp);
+            NativeList<int> minimas = new NativeList<int>(256, Allocator.Temp);
             poolKeys.Sort();
             SolvePoolPeering(ref poolKeys, ref pools);
             for(int i = 0; i < poolKeys.Length; i ++){
@@ -803,7 +809,7 @@ namespace xshazwar.noize.geologic {
                 referenceKey.idx = referencePool.indexDrain;
                 AddUniquePoolValues(referenceKey, ref drainToMinima, ref minimas);
                 referenceKey = poolKeys[i];
-                SolveUpstreamPoolPrecidence(referenceKey, referenceKey.order, ref minimas, ref pools);//, ref drainToMinima);
+                SolveUpstreamPoolPrecidence(referenceKey, referenceKey.order, ref minimas, ref pools);
                 minimas.Clear();
             }
         }
@@ -857,6 +863,8 @@ namespace xshazwar.noize.geologic {
                     BalancePeerPools(ref key, ref pool, ref update.volume, ref pools);
                     if (update.volume <= 0f){
                         return;
+                    }else{
+                        Debug.Log($"pool {key.idx} has excess -> {update.volume}");
                     }
                     // update.volume -= (pool.capacity - pool.volume);
                     // pool.volume = pool.capacity;
@@ -870,11 +878,12 @@ namespace xshazwar.noize.geologic {
                         // for minutia in DrainToMinutia[drainidx]
                             // if not full -> pool.volume += available volume / thirsty up to capacity
                         // if excess capacity ^^ roll up to supercederBy which should be the same for all peer pools
-                    if(pool.supercededBy.idx == -1){
+                    if(!pool.HasParent()){
                         // Debug.Log($"pool {key.idx}:{key.order}n{key.n} overfilled by {update.volume}, no successor -> evaporating {pool.volume} / {pool.capacity}");
                         // no place else to dump the water
                         return;
                     }
+                    // Debug.LogWarning($"up the chain -> pool {key.idx}:{key.order}n{key.n} -> {pool.supercededBy.idx}:{pool.supercededBy.order}n{pool.supercededBy.n}");
                     key = pool.supercededBy;
                 }
             }else{
@@ -897,14 +906,12 @@ namespace xshazwar.noize.geologic {
             Pool peerPool = new Pool();
             PoolKey peerKey = new PoolKey();
             float allocation = incomingVolume / (float) peers;
+            // Debug.Log($"{pk.idx} exc {incomingVolume} allocating {allocation} -> {peers} peers");
             for(int i = 0; i < peers; i++){
                 peerKey = primaryPool.GetPeer(i);
                 pools.TryGetValue(peerKey, out peerPool);
                 UpdatePoolPeerVolume(ref peerKey, ref peerPool, ref incomingVolume, allocation, ref pools);
-            }
-            if (incomingVolume < .00000000000001f){
-                Debug.Log("truncated tiny excess value");
-                incomingVolume = 0f;
+                // Debug.Log($"{pk.idx}-> {peerKey.idx}: new excess {incomingVolume}");
             }
         }
 
@@ -941,25 +948,28 @@ namespace xshazwar.noize.geologic {
             };
             catchment.TryGetValue(idx, out key.idx);
             // catchment members should be mutually exclusive with boundaries...
+            float catchValue = 0f;
             if(key.Exists()){
                 // is catchment
-                poolMap[idx] =  LocalHeightInPool(terrainHeight, ref key, ref pools);
-            }else{
-                // is boundary
+                catchValue =  LocalHeightInPool(terrainHeight, ref key, ref pools);
+            }
+            // is boundary
+            float boundaryValue = 0f;
+            if(boundary_BM.ContainsKey(idx)){
                 NativeParallelMultiHashMap<int, int>.Enumerator minimaIter = boundary_BM.GetValuesForKey(idx);
-                float value = 0f;
                 while (minimaIter.MoveNext()){
                     key = new PoolKey {
                         idx = minimaIter.Current,
                         order = 1,
                         n = 0
                     };
-                    value = max(
+                    boundaryValue = max(
                         LocalHeightInPool(terrainHeight, ref key, ref pools)
-                        , value);
+                        , boundaryValue);
                 }
-                poolMap[idx] = value;
             }
+            poolMap[idx] = max(catchValue, boundaryValue);
+            
         }
 
         public float LocalHeightInPool(
@@ -975,25 +985,25 @@ namespace xshazwar.noize.geologic {
                 depth++;
                 pools.TryGetValue(key, out pool);
                 if(pool.volume < pool.capacity){
-                    // Debug.LogWarning($"has capacity {key.idx}:{key.order}n{key.n} -> {pool.volume} / {pool.capacity}");
+                    // Debug.LogWarning($"has capacity {key.idx}:{key.order}n{key.n} -> {pool.volume} / {pool.capacity}, break @ {depth}");
                     break;
                 }
-                if(pool.supercededBy.idx != -1){
-                    // Debug.LogWarning($"is full and has parent {key.idx}:{key.order}n{key.n} >> {pool.supercededBy.idx}:{pool.supercededBy.order}n{pool.supercededBy.n}");
+                if(pool.HasParent()){
+                    // Debug.LogWarning($"is full and has parent {key.idx}:{key.order}n{key.n} >> {pool.supercededBy.idx}:{pool.supercededBy.order}n{pool.supercededBy.n} @ {depth}");
                     key = pool.supercededBy;
+                }else{
+                    break;
                 }
-                if(depth > 128){
+                if(depth > 16){
                     Debug.LogError("maximum pool draw depth exceeded, bugged?");
                     break;
                 }
             }
-            if (pool.indexMinima == -1){
+            if (!pool.Exists()){
                 return 0f;
-                // poolMap[idx] = 0f;
             }else{
                 float value = 1f;
                 pool.EstimateHeight(terrainHeight, out value);
-                // poolMap[idx] = value;
                 return value;
             }
         }
