@@ -704,7 +704,7 @@ namespace xshazwar.noize.geologic {
 
         }
 
-        // solve for supercededBy
+        // solve for supercededBy / minimumVolume
         public void SolveUpstreamPoolPrecidence(
             PoolKey key,
             int poolOrder,
@@ -730,7 +730,14 @@ namespace xshazwar.noize.geologic {
                         }
                         probe.n += 1;
                     }
-                    if (match) break;
+                    if (match){
+                        Pool parent = pools[key];
+                        // all children should have the same drain height
+                        // so we just take the last one
+                        parent.SetMinimumVolume(poolProbe.drainHeight);
+                        pools[key] = parent;
+                        break;
+                    }
                 }
             }
         }
@@ -854,6 +861,7 @@ namespace xshazwar.noize.geologic {
             if(update.volume > 0f){
                 while(poolKeys.Contains(key)){
                     pools.TryGetValue(key, out pool);
+                    pool.volume = max(pool.volume, pool.minVolume);
                     if((pool.volume + update.volume) < pool.capacity){
                         pool.volume += update.volume;
                         pools[key] = pool;

@@ -7,10 +7,6 @@ namespace xshazwar.noize.geologic {
 
     struct Regression {
 
-        // The regression doesn't solve well for numbers under 1, so we'll scale by a set amount and
-            // see if that helps
-        public static readonly float SCALE = 1f;
-
         float Mean(NativeArray<float> items){
             float sum = 0f;
             for( int i = 0; i < items.Length; i ++){
@@ -47,7 +43,7 @@ namespace xshazwar.noize.geologic {
         }
 
         float PredictLog(float x, float b1, float b2){
-            return (b1 + b2 * log(x * SCALE)) / SCALE;
+            return b1 + b2 * log(x);
         }
 
         // public void LogRegression(NativeArray<float> ys, NativeArray<float> xs, out float b1, out float b2, bool RectifyToEndValue = true){

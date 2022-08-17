@@ -120,6 +120,7 @@ namespace xshazwar.noize.geologic {
         public int memberCount; // total verts
         public float capacity;  // in normalized height units (a single vert can occupy a volume of 0 -> 1)
         public float volume;    // in normalized height units
+        public float minVolume; // minimum volume, under this threshold constituent pools are not yet filled
 
         // Beta1 for regression
         public float b1;
@@ -132,6 +133,7 @@ namespace xshazwar.noize.geologic {
             indexDrain = indexDrain_;
             drainHeight = drainHeight_;
             volume = 0f;
+            minVolume = 0f;
             peer0 = new PoolKey {idx = -1}; // idx : -1 === DNE
             peer1 = new PoolKey {idx = -1};
             peer2 = new PoolKey {idx = -1};
@@ -146,6 +148,14 @@ namespace xshazwar.noize.geologic {
             // wh == surfaceHeightAtMinima(volume) - cellHeight 
             waterHeight = (b1 + (b2 * log(math.max(volume + 1f, 1f)))) - cellHeight;
         }
+
+        public void SetMinimumVolume(float confluenceHeight){
+            // for higher order pools, a confluence must be met
+            // before the pool will fill
+            // confluenceHeight = (b1 + (b2 * log(math.max(volume + 1f, 1f)))) - minimaHeight;
+            minVolume = exp(confluenceHeight / b2);
+
+        }
         
         public void SolvePool(NativeArray<float> heights){
             memberCount = heights.Length;
@@ -154,8 +164,8 @@ namespace xshazwar.noize.geologic {
             for (int i = 1 ; i < heights.Length; i++){
                 capacity += (drainHeight - heights[i]);
             }
-            b1 = minimaHeight * Regression.SCALE;
-            b2 = ((drainHeight - minimaHeight) * Regression.SCALE) / log(capacity + 1f);
+            b1 = minimaHeight;
+            b2 = (drainHeight - minimaHeight) / log(capacity + 1f);
         }
 
         public bool HasParent(){
