@@ -25,22 +25,27 @@ namespace xshazwar.noize.geologic {
         private TileRequest tileData;
         private BasePipeline poolGenerator;
         private BasePipeline poolSolver;
-        private int tileHeight = 1000;
-        private int tileSize = 1000;
-        private int generatorResolution = 1000;
-        private int tileResolution = 1000;
-        private int meshResolution = 1000;
+        public int tileHeight {get; private set;}
+        public int tileSize {get; private set;}
+        public int generatorResolution {get; private set;}
+        public int tileResolution {get; private set;}
+        public int meshResolution {get; private set;}
+        public int marginRes {
+            get { return (int) (generatorResolution - meshResolution) / 2 ; }
+            private set {}
+        }
         private Material waterMaterial;
         private MaterialPropertyBlock materialProps;
         public StandAloneJobHandler jobctl;
         public PipelineStateManager stateManager;
 
+        private NativeArray<float> debugViz;
         private NativeArray<float> poolMap;
-        private NativeArray<float> heightMap;
+        public NativeArray<float> heightMap {get; private set;}
         private NativeParallelMultiHashMap<PoolKey, int> drainToMinima;
-        private NativeParallelHashMap<int, int> catchment;
-        private NativeParallelHashMap<PoolKey, Pool> pools;
-        private NativeParallelMultiHashMap<int, int> boundary_BM;
+        public NativeParallelHashMap<int, int> catchment {get; private set;}
+        public NativeParallelHashMap<PoolKey, Pool> pools {get; private set;}
+        public NativeParallelMultiHashMap<int, int> boundary_BM {get; private set;}
         public NativeList<PoolUpdate> poolUpdates;
 
         public bool paramsReady = false;
@@ -77,14 +82,17 @@ namespace xshazwar.noize.geologic {
             foreach (CHANNEL c in new CHANNEL[] {CHANNEL.G, CHANNEL.B, CHANNEL.R}){ //, CHANNEL.R
                 // if (c == inputChannel){continue;};
                 NativeSlice<float> CS = new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>((int) c);
-                CS.CopyFrom(new NativeSlice<float>(poolMap));
+                // CS.CopyFrom(new NativeSlice<float>(poolMap));
+                CS.CopyFrom(new NativeSlice<float>(debugViz));
             }
             texture.Apply();
         }
     #endif
     
-        private string getBufferName(string contextAlias){
-            return $"{tileData.pos.x}_{tileData.pos.y}__{generatorResolution}__{contextAlias}";
+        public string getBufferName(string contextAlias){
+            string buffer = $"{tileData.pos.x * meshResolution}_{tileData.pos.y * meshResolution}__{generatorResolution}__{contextAlias}";
+            Debug.Log(buffer);
+            return buffer;
         }
 
         public void SetFromTileGenerator(TileRequest request, MeshTileGenerator generator){
@@ -115,7 +123,7 @@ namespace xshazwar.noize.geologic {
                 stateManager.IsLocked<NativeParallelMultiHashMap<int, int>>(getBufferName("PARTERO_BOUNDARY_BM"))
             };
             if(notReady.Contains<bool>(true)){
-                Debug.Log("PoolDrawerNotready!");
+                Debug.Log($"PoolDrawerNotready! :  {String.Join(", ", notReady)}");
                 return false;
             }
             Debug.Log("PoolDrawer Depends ok!");
@@ -127,6 +135,7 @@ namespace xshazwar.noize.geologic {
                 return;
             }
             jobctl = new StandAloneJobHandler();
+            debugViz = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_DEBUG"), generatorResolution * generatorResolution);
 
             pools = stateManager.GetBuffer<PoolKey, Pool, NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS"));
             poolUpdates = stateManager.GetBuffer<PoolUpdate, NativeList<PoolUpdate>>(getBufferName("PARTERO_FAKE_POOLUPDATE"), 2 * generatorResolution);
@@ -177,13 +186,14 @@ namespace xshazwar.noize.geologic {
                 return;
             }else if(jobctl.JobComplete()){
                 jobctl.CloseJob();
+                poolUpdates.Clear();
                 Debug.Log("Job done!");
                 PushBuffer();
                 #if UNITY_EDITOR
                 ApplyTexture();
                 #endif
             }else if(updateWater && !jobctl.isRunning){
-                GenerateJunk();
+                // GenerateJunk();
                 ScheduleJob();
                 updateWater = false;
             }else if(updateWater){
@@ -193,8 +203,84 @@ namespace xshazwar.noize.geologic {
             DrawWater();
         }
 
+        public void RegisterChange(Vector2Int pos, float volume){
+            poolUpdates.Add(
+                new PoolUpdate {
+                    minimaIdx = GetAssociatedMinima(pos),
+                    volume = volume
+                }
+            );
+            updateWater = true;
+        }
+
+        public int GetAssociatedMinima(Vector2Int pos){
+            pos.x += marginRes;
+            pos.y += marginRes;
+            int idx = (pos.x * generatorResolution) + pos.y;
+            if(!catchment.ContainsKey(idx)){
+                throw new ArgumentException("No catchment at this location");
+            }
+            int minimaIdx = 0;
+            catchment.TryGetValue(idx, out minimaIdx);
+            return minimaIdx;
+        }
+
+        public PoolKey GetAssociateFirstOrderKey(int minimaIdx){
+            return new PoolKey() { idx = minimaIdx, order = 1, n = 0 };
+        }
+
+        public void GetAssociatedPools(PoolKey key, out HashSet<Pool> direct, out HashSet<Pool> peers){
+            direct = new HashSet<Pool>();
+            peers = new HashSet<Pool>();
+            Pool pool = new Pool(){ indexMinima = -1 };
+            key = RollUpToCurrent(key);
+            while(pools.ContainsKey(key)){
+                pools.TryGetValue(key, out pool);
+                if(!pool.Exists()) return;
+                direct.Add(pool);
+                CollectAssociatedPools(pool, ref direct, ref peers);
+                if(pool.HasParent()){
+                    key = pool.supercededBy;
+                }else{
+                    return;
+                }
+            }
+        }
+
+        public PoolKey RollUpToCurrent(PoolKey key){
+            PoolKey last = new PoolKey();
+            Pool pool = new Pool(){ indexMinima = -1 };
+            while(pools.ContainsKey(key)){
+                pools.TryGetValue(key, out pool);
+                if(!pool.Exists()) return last;
+                if(pool.HasParent() && pools[pool.supercededBy].volume > 0f){
+                    last = key;
+                    key = pool.supercededBy;
+                }else{
+                    return key;
+                }
+            }
+            throw new Exception();
+        }
+
+        public void CollectAssociatedPools(Pool pool, ref HashSet<Pool> direct, ref HashSet<Pool> peers){
+            Pool peer = new Pool();
+            PoolKey key = new PoolKey();
+            bool foundNew = false;
+            for(int i = 0; i < pool.PeerCount(); i ++){
+                key = pool.GetPeer(i);
+                pools.TryGetValue(key, out peer);
+                if(direct.Contains(peer)) {
+                    continue;
+                }
+                if(peers.Add(peer)){
+                    CollectAssociatedPools(peer, ref direct, ref peers);
+                }
+            }
+        }
+        
         public void GenerateJunk(){
-            poolUpdates.Clear();
+            
             NativeArray<PoolKey> keys = pools.GetKeyArray(Allocator.Temp);
             Pool pool = new Pool();
             foreach(PoolKey key in keys){

@@ -68,7 +68,6 @@ namespace xshazwar.noize.scripts {
         {
             pipelineManager = FindObjectsOfType<PipelineStateManager>()[0];
             isRunning = false;
-            // upstreamData += DataAvailable;
             upstreamMesh += MeshComplete;
             activeTiles = new Dictionary<string, TileRequest>();
             workQueue = new ConcurrentQueue<TileRequest>();
@@ -131,7 +130,9 @@ namespace xshazwar.noize.scripts {
         }
         protected virtual int calcTotalResolution(){
             double patchRes = (tileResolution * 1.0) / tileSize;
-            return tileResolution + (2 * (int) Mathf.Ceil((float) (margin * patchRes)));
+            // return tileResolution + (2 * (int) Mathf.Ceil((float) (margin * patchRes)));
+            // TODO Figure out if we actually wanted the mesh resolution to be two more? ^^
+            return tileResolution + (2 * (int) (float) (margin * patchRes));
         }
 
         protected virtual int calcMarginVerts(){
@@ -188,6 +189,9 @@ namespace xshazwar.noize.scripts {
             MeshFilter filter = go.AddComponent<MeshFilter>();
             MeshRenderer renderer = go.AddComponent<MeshRenderer>();
             PoolDrawer poolDrawer = go.AddComponent<PoolDrawer>();
+            Rigidbody rb = go.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            go.AddComponent<LivePoolDebugger>();
             poolDrawer.SetFromTileGenerator(
                 activeTiles[data.uuid], this
             );
@@ -216,8 +220,7 @@ namespace xshazwar.noize.scripts {
             OnMeshComplete(d);   
         }
 
-        protected virtual void OnMeshComplete(MeshStageData d){
-        }
+        protected virtual void OnMeshComplete(MeshStageData d){}
     
         public void MeshBaked(string uuid){
             TileRequest req = activeTiles[uuid];
@@ -228,8 +231,6 @@ namespace xshazwar.noize.scripts {
 
         protected virtual void OnMeshBaked(string uuid){}
 
-        public virtual void OnDestroy(){
-            // backingData.Dispose();
-        }
+        public virtual void OnDestroy(){}
     }
 }

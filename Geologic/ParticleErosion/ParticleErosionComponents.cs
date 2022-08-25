@@ -472,6 +472,9 @@ namespace xshazwar.noize.geologic {
                     probeIdx = bIdx.Current;
                     if (heightMap[probeIdx] > drainHeight) continue;
                     if (NativeArrayExtensions.Contains<int, int>(sharedBoundary, probeIdx)) continue;
+                    // TODO perform thinning on the boundary_BM keys so that we don't have
+                    // thick borders. This should solve the issue of Invalid Drain Neighborhoods
+                    // an remove the need for this error prone method
                     if(!DrainNeighborhoodIsValid(probeIdx, ref boundary_BM, ref sharedBoundary)) continue;
                     drainHeight = heightMap[probeIdx];
                     drainIdx = probeIdx;
@@ -504,7 +507,7 @@ namespace xshazwar.noize.geologic {
                     }
                 }
             }
-            return boundaryLocked <= 4;
+            return boundaryLocked <= 5;
         }
 
         public void SaveManyDrains(
@@ -662,7 +665,7 @@ namespace xshazwar.noize.geologic {
             }
             Pool pool = new Pool();
             // Debug.Log($"{referenceMinima} -> {refMinHeight} >> {drainHeight} @{members.Length}");
-            pool.Init(referenceMinima, refMinHeight, drainIdx, drainHeight);
+            pool.Init(referenceMinima, refMinHeight, drainIdx, drainHeight, (byte) poolOrder);
             pool.SolvePool(members.AsArray());
             PoolKey key = new PoolKey {
                 idx = referenceMinima,
@@ -711,6 +714,7 @@ namespace xshazwar.noize.geologic {
             ref NativeList<int> minimaSet,
             ref NativeParallelHashMap<PoolKey, Pool> pools
         ){
+            // reaches down from parents into their children and set their lineage
             PoolKey probe = new PoolKey();
             Pool poolProbe = new Pool();
             bool match = false;
@@ -731,11 +735,15 @@ namespace xshazwar.noize.geologic {
                         probe.n += 1;
                     }
                     if (match){
-                        Pool parent = pools[key];
-                        // all children should have the same drain height
-                        // so we just take the last one
-                        parent.SetMinimumVolume(poolProbe.drainHeight);
-                        pools[key] = parent;
+                        if(!pools.ContainsKey(key)){
+                            Debug.LogError($"could not set minimum volume on {key.idx}:{key.order}");
+                        }else{
+                            Pool parent = pools[key];
+                            // all children should have the same drain height
+                            // so we just take the last one
+                            parent.SetMinimumVolume(poolProbe.drainHeight);
+                            pools[key] = parent;
+                        }
                         break;
                     }
                 }
@@ -815,6 +823,7 @@ namespace xshazwar.noize.geologic {
                 pools.TryGetValue(referenceKey, out referencePool);
                 referenceKey.idx = referencePool.indexDrain;
                 AddUniquePoolValues(referenceKey, ref drainToMinima, ref minimas);
+                // We need this second pick up as we swap to the drain idx to search for unique values
                 referenceKey = poolKeys[i];
                 SolveUpstreamPoolPrecidence(referenceKey, referenceKey.order, ref minimas, ref pools);
                 minimas.Clear();
@@ -861,34 +870,24 @@ namespace xshazwar.noize.geologic {
             if(update.volume > 0f){
                 while(poolKeys.Contains(key)){
                     pools.TryGetValue(key, out pool);
+                    Debug.Log($"working on {pool.indexMinima}:{key.order} // starting @ {pool.volume} [{pool.minVolume}]");
                     pool.volume = max(pool.volume, pool.minVolume);
                     if((pool.volume + update.volume) < pool.capacity){
                         pool.volume += update.volume;
                         pools[key] = pool;
                         // pool's not full and we have no more water
+                        Debug.Log($"{pool.indexMinima}:{key.order} is not yet full {pool.volume} / {pool.capacity}");
                         return;
                     }
-                    BalancePeerPools(ref key, ref pool, ref update.volume, ref pools);
+                    pools[key] = pool;
+                    BalancePeerPools(ref key, ref pool, ref update.volume, ref pools, ref key);
                     if (update.volume <= 0f){
                         return;
-                    }else{
-                        Debug.Log($"pool {key.idx} has excess -> {update.volume}");
                     }
-                    // update.volume -= (pool.capacity - pool.volume);
-                    // pool.volume = pool.capacity;
-                    // pools[key] = pool;
-
-                    // TODO
-                    // need to look at peer pools here
-                    // ->> pools that have the same drainIdx should share in the overflow from any member (equally?)
-                        // for minutia in DrainToMinutia[drainidx]
-                            // if not full -> thirsty++
-                        // for minutia in DrainToMinutia[drainidx]
-                            // if not full -> pool.volume += available volume / thirsty up to capacity
-                        // if excess capacity ^^ roll up to supercederBy which should be the same for all peer pools
                     if(!pool.HasParent()){
-                        // Debug.Log($"pool {key.idx}:{key.order}n{key.n} overfilled by {update.volume}, no successor -> evaporating {pool.volume} / {pool.capacity}");
+                        Debug.Log($"pool {key.idx}:{key.order}n{key.n} overfilled by {update.volume}, no successor -> evaporating {pool.volume} / {pool.capacity}");
                         // no place else to dump the water
+                        // TODO flow water particle
                         return;
                     }
                     // Debug.LogWarning($"up the chain -> pool {key.idx}:{key.order}n{key.n} -> {pool.supercededBy.idx}:{pool.supercededBy.order}n{pool.supercededBy.n}");
@@ -905,21 +904,29 @@ namespace xshazwar.noize.geologic {
             ref PoolKey pk,
             ref Pool primaryPool,
             ref float incomingVolume,
-            ref NativeParallelHashMap<PoolKey, Pool> pools
+            ref NativeParallelHashMap<PoolKey, Pool> pools,
+            ref PoolKey originator
         ){
             // try to allocate all water to the primary pool
             UpdatePoolPeerVolume(ref pk, ref primaryPool, ref incomingVolume, incomingVolume, ref pools);
             int peers = primaryPool.PeerCount();
             if(peers == 0) return;
+            if(primaryPool.HasPeer(originator) && peers == 1) return;
             Pool peerPool = new Pool();
             PoolKey peerKey = new PoolKey();
-            float allocation = incomingVolume / (float) peers;
-            // Debug.Log($"{pk.idx} exc {incomingVolume} allocating {allocation} -> {peers} peers");
+            float allocation = !primaryPool.HasPeer(originator) ? incomingVolume / (float) peers : incomingVolume / (float) (peers - 1);
+            Debug.Log($"{pk.idx}:{pk.order} exc {incomingVolume} allocating {allocation} -> {peers} peers");
             for(int i = 0; i < peers; i++){
+                float allocationLocal = allocation;
                 peerKey = primaryPool.GetPeer(i);
+                if(peerKey.Equals(originator)){
+                    continue;
+                }
                 pools.TryGetValue(peerKey, out peerPool);
-                UpdatePoolPeerVolume(ref peerKey, ref peerPool, ref incomingVolume, allocation, ref pools);
-                // Debug.Log($"{pk.idx}-> {peerKey.idx}: new excess {incomingVolume}");
+                BalancePeerPools(ref peerKey, ref peerPool, ref allocationLocal, ref pools, ref originator);
+                // if(UpdatePoolPeerVolume(ref peerKey, ref peerPool, ref incomingVolume, allocation, ref pools));
+                incomingVolume -= (allocation - allocationLocal);
+                Debug.Log($"{pk.idx}:{pk.order}-> {peerKey.idx}:{peerKey.order} new excess {incomingVolume}");
             }
         }
 
@@ -931,9 +938,14 @@ namespace xshazwar.noize.geologic {
             ref NativeParallelHashMap<PoolKey, Pool> pools
         ){
             float newWater = min(allocatedVolume, pool.capacity - pool.volume);
+            if (newWater < 1E-10) return;
             pool.volume = pool.volume + newWater;
+            // we check for equality so round off any edges
+            if (abs(pool.volume - pool.capacity) < 1E-10) pool.volume = pool.capacity;
+            Debug.Log($"{pool.indexMinima}:{key.order} >> {pool.volume} / {pool.capacity}");
             availableWater -= newWater;
             pools[key] = pool;
+            return;
         }
 
         // Parallel
@@ -996,7 +1008,7 @@ namespace xshazwar.noize.geologic {
                     // Debug.LogWarning($"has capacity {key.idx}:{key.order}n{key.n} -> {pool.volume} / {pool.capacity}, break @ {depth}");
                     break;
                 }
-                if(pool.HasParent()){
+                if(pool.HasParent() && pools[pool.supercededBy].volume > 0f){
                     // Debug.LogWarning($"is full and has parent {key.idx}:{key.order}n{key.n} >> {pool.supercededBy.idx}:{pool.supercededBy.order}n{pool.supercededBy.n} @ {depth}");
                     key = pool.supercededBy;
                 }else{

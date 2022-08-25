@@ -29,7 +29,7 @@ namespace xshazwar.noize.editor {
             // sticking the texture into a label didn't
             Rect space = EditorGUILayout.BeginHorizontal();
             EditorGUI.DrawPreviewTexture(space, texture);
-            EditorGUILayout.TextArea("", GUIStyle.none, GUILayout.Height(256));
+            EditorGUILayout.TextArea("", GUIStyle.none, GUILayout.Height(1024));
             EditorGUILayout.EndHorizontal();
             
             serializedObject.ApplyModifiedProperties();

@@ -75,11 +75,11 @@ namespace xshazwar.noize.geologic {
 
         public int CompareTo(PoolKey obj){
             if (obj.Equals(this)){ return 0;}
-            return GetHashCode() > obj.GetHashCode() ? 1 : -1;
+            return GetHashCode() < obj.GetHashCode() ? 1 : -1;
         }
      
         public override int GetHashCode(){
-            return idx.GetHashCode() ^ (order.GetHashCode() * n.GetHashCode());
+            return idx.GetHashCode() ^ (order.GetHashCode() + n.GetHashCode());
             // return idx.GetHashCode() + (order.GetHashCode() * n.GetHashCode());
         }
 
@@ -97,12 +97,13 @@ namespace xshazwar.noize.geologic {
     
     }
 
-    public struct Pool {
+    public struct Pool : IEquatable<Pool>, IComparable<Pool> {
 
         public int indexMinima;
         public float minimaHeight;
         public int indexDrain;
         public float drainHeight;
+        public byte order;  // pool order as defined by it's drain
 
     // Properties for Filling
 
@@ -127,11 +128,12 @@ namespace xshazwar.noize.geologic {
         // Beta2 for regression
         public float b2;
 
-        public void Init(int indexMinima_, float minimaHeight_, int indexDrain_, float drainHeight_){
+        public void Init(int indexMinima_, float minimaHeight_, int indexDrain_, float drainHeight_, byte order_){
             indexMinima = indexMinima_;
             minimaHeight = minimaHeight_;
             indexDrain = indexDrain_;
             drainHeight = drainHeight_;
+            order = order_;
             volume = 0f;
             minVolume = 0f;
             peer0 = new PoolKey {idx = -1}; // idx : -1 === DNE
@@ -153,7 +155,9 @@ namespace xshazwar.noize.geologic {
             // for higher order pools, a confluence must be met
             // before the pool will fill
             // confluenceHeight = (b1 + (b2 * log(math.max(volume + 1f, 1f)))) - minimaHeight;
-            minVolume = exp(confluenceHeight / b2);
+            minVolume = exp((confluenceHeight - minimaHeight) / b2) - 1f;
+            // float checksum = (b1 + (b2 * log(math.max(minVolume + 1f, 1f)))) - confluenceHeight;
+            // Debug.LogWarning($"min volume {minVolume} / {capacity} ->> {checksum}");
 
         }
         
@@ -170,6 +174,10 @@ namespace xshazwar.noize.geologic {
 
         public bool HasParent(){
             return this.supercededBy.Exists();
+        }
+
+        public bool HasPeer(PoolKey peer){
+            return peer.Equals(peer0) || peer.Equals(peer1) || peer.Equals(peer2);
         }
 
         public void AddPeer(int peerIdx, PoolKey key){
@@ -190,6 +198,25 @@ namespace xshazwar.noize.geologic {
             if(!peer1.Exists()) return 1;
             if(!peer2.Exists()) return 2;
             return 3;
+        }
+
+        // equals / compares
+
+        public bool Equals(Pool other){
+            if (indexMinima != other.indexMinima){
+                return false;
+            }
+            return (order == other.order && indexDrain == other.indexDrain);
+        }
+
+        public int CompareTo(Pool obj){
+            if (obj.Equals(this)){ return 0;}
+            return GetHashCode() > obj.GetHashCode() ? 1 : -1;
+        }
+     
+        public override int GetHashCode(){
+            return indexMinima.GetHashCode() + (order.GetHashCode());
+            // return idx.GetHashCode() + (order.GetHashCode() * n.GetHashCode());
         }
     }
 

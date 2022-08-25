@@ -162,12 +162,7 @@ namespace xshazwar.noize.geologic {
             for(int i = 0; i < poolKeys.Length; i++){
                 k = poolKeys[i];
                 pools.TryGetValue(k, out pool);
-                if(k.order > 8){
-                    outMap[pool.indexDrain] =  value;
-                }else{
-                    outMap[pool.indexDrain] =  value / 2f;
-                }
-                
+                outMap[pool.indexDrain] =  value;
             }
         }
 

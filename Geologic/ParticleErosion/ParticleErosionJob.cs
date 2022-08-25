@@ -336,6 +336,8 @@ namespace xshazwar.noize.geologic {
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
     public struct UpdatePoolValues: IJob {
         NativeList<PoolUpdate> updates;
+        
+        [NativeDisableContainerSafetyRestriction]
         NativeParallelHashMap<PoolKey, Pool> pools;
         FlowSuperPosition poolJob;
 
@@ -407,36 +409,36 @@ namespace xshazwar.noize.geologic {
         }
     }
 
-    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
-    public struct PoolInterpolationDebugJob: IJob {
-        [ReadOnly]
-        NativeParallelHashMap<PoolKey, Pool> pools;
+    // [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+    // public struct PoolInterpolationDebugJob: IJob {
+    //     [ReadOnly]
+    //     NativeParallelHashMap<PoolKey, Pool> pools;
 
-        public void Execute(){
-            NativeArray<PoolKey> keys = pools.GetKeyArray(Allocator.Temp);
-            Pool pool = new Pool();
-            float val = 0f;
-            for(int x = 0; x < keys.Length; x++){
-                pools.TryGetValue(keys[x], out pool);
-                Debug.Log($"{pool.minimaHeight} -> {pool.drainHeight} @{pool.memberCount} b1: {pool.b1}, b2:{pool.b2} full {pool.volume / pool.capacity}% of {pool.capacity}");
+    //     public void Execute(){
+    //         NativeArray<PoolKey> keys = pools.GetKeyArray(Allocator.Temp);
+    //         Pool pool = new Pool();
+    //         float val = 0f;
+    //         for(int x = 0; x < keys.Length; x++){
+    //             pools.TryGetValue(keys[x], out pool);
+    //             Debug.Log($"{pool.minimaHeight} -> {pool.drainHeight} @{pool.memberCount} b1: {pool.b1}, b2:{pool.b2} full {pool.volume / pool.capacity}% of {pool.capacity}");
                 
-                // pool.EstimateHeight(pool.minimaHeight, out val);
-                // Debug.Log($"{val} @ empty == {val - pool.minimaHeight}");
-                // pool.volume = pool.capacity;
-                // pool.EstimateHeight(pool.minimaHeight, out val);
-                // Debug.Log($"{val} @ full == {val - pool.drainHeight}");
-            }
-        }
+    //             // pool.EstimateHeight(pool.minimaHeight, out val);
+    //             // Debug.Log($"{val} @ empty == {val - pool.minimaHeight}");
+    //             // pool.volume = pool.capacity;
+    //             // pool.EstimateHeight(pool.minimaHeight, out val);
+    //             // Debug.Log($"{val} @ full == {val - pool.drainHeight}");
+    //         }
+    //     }
 
-        public static JobHandle ScheduleJob(
-            NativeParallelHashMap<PoolKey, Pool> pools,
-            JobHandle deps
-        ){
-            var job = new PoolInterpolationDebugJob {
-                pools = pools
-            };
-            return job.Schedule(deps);
-        }
-    }
+    //     public static JobHandle ScheduleJob(
+    //         NativeParallelHashMap<PoolKey, Pool> pools,
+    //         JobHandle deps
+    //     ){
+    //         var job = new PoolInterpolationDebugJob {
+    //             pools = pools
+    //         };
+    //         return job.Schedule(deps);
+    //     }
+    // }
 
 }
