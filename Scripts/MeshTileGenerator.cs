@@ -60,7 +60,8 @@ namespace xshazwar.noize.scripts {
         protected NativeArray<float> backingData;
 
         public Material meshMaterial;
-        public Material waterMaterial;
+        public Material poolMaterial;
+        public Material streamMaterial;
         public Action<StageIO> upstreamMesh;
 
         protected bool isRunning;

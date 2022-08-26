@@ -220,6 +220,24 @@ namespace xshazwar.noize.geologic {
         }
     }
 
+    // Erosive Events
+
+    public struct ErosiveEvent {
+        public int idx; // the tile space idx affected
+        public float deltaWaterTrack;
+        public float deltaPoolMap;
+        public float deltaSediment;
+
+        public static implicit operator ErosiveEvent(int idx){
+            return new ErosiveEvent() {
+                idx = idx,
+                deltaWaterTrack = 0,
+                deltaPoolMap = 0,
+                deltaSediment = 0
+            };
+        }
+    }
+
     public static class CardinalExtension {
 
         // Stuck this in here to see if we could predict catchment borders using hamming weight

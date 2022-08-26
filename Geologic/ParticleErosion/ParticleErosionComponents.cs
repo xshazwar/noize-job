@@ -880,17 +880,19 @@ namespace xshazwar.noize.geologic {
                         return;
                     }
                     pools[key] = pool;
-                    BalancePeerPools(ref key, ref pool, ref update.volume, ref pools, ref key);
-                    if (update.volume <= 0f){
+                    // Instead of trying to fill peers, if they're not already full, we'll flow.
+
+                    // BalancePeerPools(ref key, ref pool, ref update.volume, ref pools, ref key);
+                    if(UpdatedPoolHasPeerCapacity(ref key, ref pool, ref update.volume, ref pools)){
+                        Debug.Log($"pool {key.idx}:{key.order}n{key.n} flowing {update.volume} to peer");
+                        EmitFlowFromPool(pool, update.volume);
                         return;
                     }
                     if(!pool.HasParent()){
-                        Debug.Log($"pool {key.idx}:{key.order}n{key.n} overfilled by {update.volume}, no successor -> evaporating {pool.volume} / {pool.capacity}");
-                        // no place else to dump the water
-                        // TODO flow water particle
+                        Debug.Log($"pool {key.idx}:{key.order}n{key.n} overfilled by {update.volume}, no successor -> flow");
+                        EmitFlowFromPool(pool, update.volume);
                         return;
                     }
-                    // Debug.LogWarning($"up the chain -> pool {key.idx}:{key.order}n{key.n} -> {pool.supercededBy.idx}:{pool.supercededBy.order}n{pool.supercededBy.n}");
                     key = pool.supercededBy;
                 }
             }else{
@@ -898,6 +900,27 @@ namespace xshazwar.noize.geologic {
                 Debug.LogWarning("not handling negation yet");
             }
             Debug.LogWarning("We should not really ever get here?");
+        }
+
+
+        public bool UpdatedPoolHasPeerCapacity(
+            ref PoolKey pk,
+            ref Pool primaryPool,
+            ref float incomingVolume,
+            ref NativeParallelHashMap<PoolKey, Pool> pools
+        ){
+            // try to allocate all water to the primary pool
+            UpdatePoolPeerVolume(ref pk, ref primaryPool, ref incomingVolume, incomingVolume, ref pools);
+            int peers = primaryPool.PeerCount();
+            if(peers == 0) return false;
+            Pool peerPool = new Pool();
+            PoolKey peerKey = new PoolKey();
+            for(int i = 0; i < peers; i++){
+                peerKey = primaryPool.GetPeer(i);
+                pools.TryGetValue(peerKey, out peerPool);
+                if (peerPool.volume < peerPool.capacity) return true;
+            }
+            return false;
         }
 
         public void BalancePeerPools( 
@@ -928,6 +951,11 @@ namespace xshazwar.noize.geologic {
                 incomingVolume -= (allocation - allocationLocal);
                 Debug.Log($"{pk.idx}:{pk.order}-> {peerKey.idx}:{peerKey.order} new excess {incomingVolume}");
             }
+        }
+
+        public void EmitFlowFromPool(Pool originator, float volume){
+            // Special cast of flow
+            // We don't want to flow back into the pool from which we just were emitted
         }
 
         public void UpdatePoolPeerVolume(
@@ -1056,16 +1084,14 @@ namespace xshazwar.noize.geologic {
     }
 
 
-    struct WorldTile {
+    public struct WorldTile {
     
-        float SCALE;
-        int2 res;
-        
-        NativeArray<float> height;
-        NativeArray<float> flow;
-        NativeArray<float> pool;
-        NativeArray<float> track;
-
+        public float SCALE;
+        public int2 res;
+        public NativeArray<float> height;
+        public NativeArray<float> pool;
+        public NativeArray<float> flow;
+        public NativeArray<float> track;
         static readonly int2 left = new int2(-1, 0);
         static readonly int2 right = new int2(1, 0);
         static readonly int2 up = new int2(0, 1);
@@ -1095,6 +1121,10 @@ namespace xshazwar.noize.geologic {
             return normalize(n);
         }
 
+        public bool StandingWater(int2 pos){
+            return pool[getIdx(pos)] > 0f;
+        }
+
         public float3 diff(float x, float z, int2 pos, int2 dir){
             return new float3(x, (WIH(pos + dir) - WIH(pos)), z);
         }
@@ -1110,9 +1140,64 @@ namespace xshazwar.noize.geologic {
         public int getIdx(int2 pos){
             return pos.x + (res.x * pos.y);
         }
+
+        public bool OutOfBounds(int2 pos){
+            if(pos.x < 0 || pos.y < 0 || pos.x > res.x || pos.y > res.y) return true;
+            return false;
+        }
+    }
+
+    public struct FlowMaster {
+
+        public Particle prototype;
+        public WorldTile tile;
+        public Unity.Mathematics.Random random;
+
+        static readonly int2 ZERO = new int2(0,0);
+
+        public int2 MaxPos {
+            get { return tile.res;}
+            private set {}
+        }
+
+        public NativeQueue<ErosiveEvent> events;
+
+
+        public int2 RandomPos(){
+            return random.NextInt2(ZERO, MaxPos);
+        }
+
+        // MultiThread
+        public void ServiceParticle(Particle p, int seed, int maxSteps){
+            random = new Unity.Mathematics.Random((uint) seed);
+            int step = 0;
+            while(step < maxSteps){
+                step += Descend(ref p, maxSteps - step);
+            }
+        }
+
+        public int Descend(ref Particle p, int maxSteps){
+            int step = 0;
+            bool done = false;
+            ErosiveEvent evt;
+            while(step < maxSteps && !done){
+                done = p.DescentComplete(ref tile, out evt);
+                events.Enqueue(evt);
+                if(done){
+                    p.Reset(RandomPos());
+                }
+                step++;
+            }
+            return step;
+        }
+
+        // Single Thread
+        public void CommitUpdatesToMaps(){
+
+        }
     }
     
-    public struct Particle: IParticle {
+    public struct Particle {
         
         // Parameters
         const float density = 1.0f;  //This gives varying amounts of inertia and stuff...
@@ -1123,15 +1208,16 @@ namespace xshazwar.noize.geologic {
         const float volumeFactor = 0.5f;
         
         // Fields
-
-        int index;
         int2 pos;
         float2 speed;
         float volume; // = 1f;
         float sediment; // = 0f;
         
-        public void Reset<P>(int2 maxPos, P prototype) where P : struct, IParticle{
-
+        public void Reset(int2 pos){
+            this.pos = pos;
+            this.speed = 0;
+            this.volume = 1;
+            this.sediment = 0;
         }
 
         public void SetPosition(int x, int y){
@@ -1143,64 +1229,104 @@ namespace xshazwar.noize.geologic {
             return pos;
         }
 
-        public void Consume<P>(P part) where P : struct, IParticle{
-
-        }
-
-        public void Effect<RW>(RW tile)
-            where RW: struct, IRWTile {
-
-        }
-    }
-
-    public struct ParticleMergeStep : IParticleManager {
-        // Merges superimposed particles from a sorted list
-        public void Execute<P>(NativeSlice<P> particles) where P : struct, IParticle{
-            int current = -1;
-            int2 dead = new int2(-1, -1);
-            bool2 same;
-            for (int i = 0; i < particles.Length; i++){
-                same = (particles[i].GetPosition() == dead);
-                if (same.x && same.y){
-                    continue;
-                }
-                if (current < 0){
-                    current = i;
-                    continue;
-                }
-                same = (particles[current].GetPosition() == particles[i].GetPosition());
-                if (same.x && same.y){
-                    particles[current].Consume<P>(particles[i]);
-                    particles[i].SetPosition(dead.x, dead.y);
-                }else{
-                    current = i;
-                }
+        public bool DescentComplete(ref WorldTile tile, out ErosiveEvent evt){
+            int idx = tile.getIdx(pos);
+            evt = idx;
+            evt.deltaWaterTrack = volume;
+            float3 norm = tile.Normal(pos);
+            float2 horiz = new float2(norm.x, norm.z);
+            float effF = friction*(1f - tile.flow[idx]);
+            if(length(horiz *effF) < 1E-5){
+                // Should this write to the pool map? Not sure how it wouldn't
+                evt.deltaPoolMap = volume;
+                return true;
             }
+            speed = lerp(horiz, speed, effF);
+            speed = sqrt(2.0f) * normalize(speed);
+            pos.x += (int) speed.x;
+            pos.y += (int) speed.y;
+            if(tile.OutOfBounds(pos)){
+                // TODO transfer to other tile queue
+                return true;
+            }
+            int nextIdx = tile.getIdx(pos);
+            if(tile.StandingWater(pos)){
+                evt.idx = nextIdx;
+                evt.deltaPoolMap = volume;
+                return true;
+            };
+            //Mass-Transfer (in MASS)
+            // effD(plantDensity[pos]) -> local erosion strength (based on plant density) ***Can ignore? / Punt?***
+            float effD = 1f;
+            float c_eq = max(0f, tile.height[idx] - tile.height[nextIdx]);
+            float cdiff = c_eq - sediment;
+            sediment += effD * cdiff;
+            evt.deltaSediment = -effD * cdiff;
+
+            //Evaporate (Mass Conservative)
+            float effR = evapRate*(1f - 0.2f * tile.flow[idx]);
+            sediment /= (1.0f - effR);
+            volume *= (1.0f - effR);
+            return false;
         }
+
+        // public void Consume<P>(P part) where P : struct, IParticle{
+
+        // }
+
+        // public bool Effect(WorldTile tile){
+
+        // }
     }
 
-    public struct ParticleSortStep : IParticleManager {
-        // Merges superimposed particles from a sorted list
-        public void Execute<P>(NativeSlice<P> particles) where P : struct, IParticle{
-            // use the sort extension
-        }
-    }
+    // public struct ParticleMergeStep : IParticleManager {
+    //     // Merges superimposed particles from a sorted list
+    //     public void Execute<P>(NativeSlice<P> particles) where P : struct, IParticle{
+    //         int current = -1;
+    //         int2 dead = new int2(-1, -1);
+    //         bool2 same;
+    //         for (int i = 0; i < particles.Length; i++){
+    //             same = (particles[i].GetPosition() == dead);
+    //             if (same.x && same.y){
+    //                 continue;
+    //             }
+    //             if (current < 0){
+    //                 current = i;
+    //                 continue;
+    //             }
+    //             same = (particles[current].GetPosition() == particles[i].GetPosition());
+    //             if (same.x && same.y){
+    //                 particles[current].Consume<P>(particles[i]);
+    //                 particles[i].SetPosition(dead.x, dead.y);
+    //             }else{
+    //                 current = i;
+    //             }
+    //         }
+    //     }
+    // }
 
-    public struct ParticleErosionStep: IParticleErode {
-        public int Resolution {get; set;}
-        public int JobLength {get; set;}
-        private const float TIMESTEP = 0.2f;
+    // public struct ParticleSortStep : IParticleManager {
+    //     // Merges superimposed particles from a sorted list
+    //     public void Execute<P>(NativeSlice<P> particles) where P : struct, IParticle{
+    //         // use the sort extension
+    //     }
+    // }
 
-        void Effect<P, RW>(P particle, RW tile) where RW: struct, IRWTile {
+    // public struct ParticleErosionStep: IParticleErode {
+    //     public int Resolution {get; set;}
+    //     public int JobLength {get; set;}
+    //     private const float TIMESTEP = 0.2f;
 
-        }
+    //     void Effect<P, RW>(P particle, RW tile) where RW: struct, IRWTile {
 
-        public void Execute<P, RW>(int i, NativeSlice<P> particles, RW tile)
-            where P : struct, IParticle
-            where RW: struct, IRWTile {
+    //     }
 
-        }
+    //     public void Execute<P, RW>(int i, NativeSlice<P> particles, RW tile)
+    //         where P : struct, IParticle
+    //         where RW: struct, IRWTile {
 
-    }
+    //     }
+
+    // }
 
 }

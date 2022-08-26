@@ -71,28 +71,27 @@ namespace xshazwar.noize.geologic {
 
     }
 
-    public interface IParticle {
+    // public interface IParticle {
 
-        void Reset<P>(int2 maxPos, P prototype) where P : struct, IParticle;
+    //     // void Reset(int2 maxPos, P prototype) ;
 
-        void SetPosition(int x, int y);
-        public int2 GetPosition();
+    //     void SetPosition(int x, int y);
+    //     public int2 GetPosition();
 
-        void Consume<P>(P part) where P : struct, IParticle;
+    //     // void Consume<P>(P part) where P : struct, IParticle;
+    //     // void Effect(WorldTile tile)
+    //     //     where RW: struct, IRWTile;
+    // }
 
-        void Effect<RW>(RW tile)
-            where RW: struct, IRWTile;
-    }
+    // public interface IParticleManager {
+    //     void Execute<P>(NativeSlice<P> particles) where P : struct, IParticle;
+    // }
 
-    public interface IParticleManager {
-        void Execute<P>(NativeSlice<P> particles) where P : struct, IParticle;
-    }
+    // public interface IParticleErode : ICommonTileSettings {
 
-    public interface IParticleErode : ICommonTileSettings {
+    //     void Execute<P, RW>(int i, NativeSlice<P> particles, RW tile)
+    //         where P : struct, IParticle
+    //         where RW: struct, IRWTile;
 
-        void Execute<P, RW>(int i, NativeSlice<P> particles, RW tile)
-            where P : struct, IParticle
-            where RW: struct, IRWTile;
-
-    }
+    // }
 }
