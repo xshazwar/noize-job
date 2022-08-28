@@ -1,0 +1,98 @@
+BEGIN_OPTIONS
+END_OPTIONS
+
+BEGIN_PROPERTIES
+   _Mesh_Res ("Mesh Resolution", Float) = 0
+   _Data_Res ("Data Resolution", Float) = 0
+   _Mesh_Size ("Mesh Size", Float) = 0
+   _Height ("Height", Float) = 1000
+
+END_PROPERTIES
+
+// Any variables you want to have in the per material CBuffer go here.
+BEGIN_CBUFFER
+   float _Height;
+   float _Mesh_Res;
+   float _Data_Res;
+   float _Mesh_Size;
+   StructuredBuffer<float> _TerrainValues;
+   StructuredBuffer<float> _WaterValues;
+END_CBUFFER
+
+// if you are writing a subshader, any defines that should be set on the main
+// shader are defined here
+BEGIN_DEFINES
+   #pragma multi_compile_instancing
+   #pragma instancing_options procedural:ConfigureProcedural
+
+END_DEFINES
+
+
+// All code goes here
+
+BEGIN_CODE
+
+   int DEAD;
+   float MESH_RATIO;
+   int FMR;
+   float EPS;
+
+   void ConfigureProcedural () {
+      #if defined(UNITY_PROCEDURAL_INSTANCING_ENABLED)
+      MESH_RATIO = _Mesh_Size / (_Mesh_Res - 1);
+      FMR = _Mesh_Res;
+      EPS = FMR / _Mesh_Size;
+      DEAD = (int) (_Data_Res - _Mesh_Res) / 2;
+      #endif
+   }
+
+   int HeightIdx(in int tileID, int x, int z){
+      return  ((z + DEAD) * _Data_Res + (DEAD + x));
+   }
+
+   float InterpolateEdge(float a, float b){
+      return a - (b - a);
+   }
+
+   float HeightValue(in int tileID, int x, int z){
+    //   return _TerrainValues[HeightIdx(tileID, x, z)];
+    return 2000 + (_TerrainValues[HeightIdx(0, x, z)] * _Height);
+   }
+
+    float VertexHeight(int x, int z){
+        //   return _TerrainValues[HeightIdx(0, v.vertex.x, v.vertex.z)] *  _Height;
+        // return _WaterValues[HeightIdx(0, v.vertex.x, v.vertex.z)] *  _Height;
+        return HeightValue(0, x, z);
+    }
+
+   void ApplyNormal(inout VertexData v, in float x, in float z, in int tileID){
+      float t = HeightValue(tileID, x, z);
+      float l = x > 0 ? HeightValue(tileID, x - 1, z): InterpolateEdge(t, HeightValue(tileID, x + 1, z));
+      float r = x < FMR - 1 ? HeightValue(tileID, x + 1, z): InterpolateEdge(t, HeightValue(tileID, x - 1, z));
+      float u = z > 0 ? HeightValue(tileID, x, z - 1): InterpolateEdge(t, HeightValue(tileID, x, z + 1));
+      float d = z < FMR - 1 ? HeightValue(tileID, x, z + 1): InterpolateEdge(t, HeightValue(tileID, x, z - 1));
+      v.normal = normalize(float3((l - r) / 2 * EPS, 2 / _Height, (u - d) / 2 * EPS));
+      return;
+   }
+
+   void ModifyVertex(inout VertexData v, inout ExtraV2F d){
+    int x = (v.vertex.x + 0.5) * _Mesh_Res;
+    int z = (v.vertex.z + 0.5) * _Mesh_Res;
+    ApplyNormal(v, x, z, 0);
+    v.vertex.x = (0.5 + v.vertex.x) * _Mesh_Size + ( MESH_RATIO );
+    v.vertex.z = (0.5 + v.vertex.z) * _Mesh_Size + ( MESH_RATIO );
+    v.vertex.y = VertexHeight(x, z);
+	}
+
+	void SurfaceFunction(inout Surface o, ShaderData d){
+   #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
+         // o.Albedo = 1 - (half3(0, 0,.5) * GetSceneColor(d.screenUV));
+         o.Albedo = half3(0, 0,.5);
+         o.Alpha = .2;
+      #else
+         o.Albedo = half3(1, 0,1);
+         o.Alpha = 1;
+      #endif
+	}
+
+END_CODE

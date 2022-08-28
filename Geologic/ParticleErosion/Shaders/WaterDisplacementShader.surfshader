@@ -26,14 +26,6 @@ END_PROPERTIES
 
 
 BEGIN_CBUFFER
-   // float _height_Map;
-   // float _DisplacementAmount;
-   // float _DisplacementMipBias;
-   // float _TessSubdiv;
-   // float _TessMinDistance;
-   // float _TessMaxDistance;
-   
-
    float _Height;
    float _Mesh_Res;
    float _Data_Res;
@@ -183,8 +175,8 @@ BEGIN_CODE
       v.vertex.z = (0.5 + v.vertex.z) * _Mesh_Size + ( MESH_RATIO );
       v.vertex.y = VertexHeight(x, z);
    #else
-      v.vertex.x = v.vertex.x; // * 2000 / 356;
-      v.vertex.z = v.vertex.z; // * 2000 / 356;
+      v.vertex.x = v.vertex.x;
+      v.vertex.z = v.vertex.z;
       v.vertex.y = -1000;
    #endif
 	}

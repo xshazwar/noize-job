@@ -32,6 +32,7 @@ namespace xshazwar.noize.pipeline {
         public bool TrySetLock(string key, ref JobHandle handle, ref JobHandle lockHandle);
     }
     public interface IManageBuffer<out T> : IBaseBufferManager {
+        public T GetBuffer(string key, int size, NativeArrayOptions options);
         public T GetBuffer(string key, int size);
         public T GetBuffer(string key);
     }
@@ -46,12 +47,14 @@ namespace xshazwar.noize.pipeline {
         public static readonly HashSet<Type> SUPPORTED_TYPES = new HashSet<Type> {
             typeof(NativeArray<T>),
             typeof(NativeList<T>),
+            typeof(NativeQueue<T>),
             typeof(NativeParallelHashSet<T>)
         };
 
         public static readonly Dictionary<Type, Type> conversion = new Dictionary<Type, Type> {
                 {typeof(NativeArray<T>), typeof(NativeArrayState<T>)},
                 {typeof(NativeList<T>), typeof(NativeListState<T>)},
+                {typeof(NativeQueue<T>), typeof(NativeQueueState<T>)},
                 {typeof(NativeParallelHashSet<T>), typeof(NativeParallelHashSetState<T>)}
         };
 
@@ -147,7 +150,26 @@ namespace xshazwar.noize.pipeline {
             return new NativeArray<T>(size, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         }
 
+        public override NativeArray<T> CreateInstance(int size, NativeArrayOptions options = NativeArrayOptions.UninitializedMemory){
+            Debug.Log($"allocate new NativeArray<{typeof(T)}>: {size}");
+            return new NativeArray<T>(size, Allocator.Persistent, options);
+        }
+
         public override void Dispose(NativeArray<T> item){
+            item.Dispose();
+        }
+    }
+
+    public class NativeQueueState<T> : DisposablePipelineState<NativeQueue<T>> where T: unmanaged {
+        
+        public NativeQueueState() : base(){}
+        
+        public override NativeQueue<T> CreateInstance(int size){
+            Debug.Log($"allocate new NativeQueue<{typeof(T)}>: {size} -> not used");
+            return new NativeQueue<T>(Allocator.Persistent);
+        }
+
+        public override void Dispose(NativeQueue<T> item){
             item.Dispose();
         }
     }
@@ -176,6 +198,17 @@ namespace xshazwar.noize.pipeline {
 
         public BasePipelineState(){}
 
+        public C GetBuffer(string key, int size, NativeArrayOptions options = NativeArrayOptions.UninitializedMemory){
+            if (buffers == null){
+                buffers = new Dictionary<string, C>();
+            }
+            if (!buffers.ContainsKey(key)){
+                Debug.Log($"<{typeof(C)}>: {key} is not allocated, creating instance");
+                buffers[key] = CreateInstance(size, options);
+            }
+            return buffers[key];
+        }
+        
         public C GetBuffer(string key, int size){
             if (buffers == null){
                 buffers = new Dictionary<string, C>();
@@ -260,6 +293,7 @@ namespace xshazwar.noize.pipeline {
 
         public abstract void Dispose(C item);
         public abstract C CreateInstance(int size);
+        public virtual C CreateInstance(int size, NativeArrayOptions options) { return CreateInstance(size);}
 
     }
 }

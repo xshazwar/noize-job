@@ -30,7 +30,11 @@ namespace xshazwar.noize.pipeline {
         // request a buffer by type and initial allocation like:
         // GetBuffer<float, NativeList<float>>("256_waterMap.001x001z", 256*256);
 
-        public T GetBuffer<V, T> (string name, int size = -1)  where V: unmanaged, IEquatable<V> where T: struct {
+        public T GetBuffer<V, T> (
+            string name,
+            int size = -1,
+            NativeArrayOptions options = NativeArrayOptions.UninitializedMemory
+        )  where V: unmanaged, IEquatable<V> where T: struct {
             if(states == null){
                 states = new Dictionary<Type, dynamic>();
             }
@@ -40,6 +44,9 @@ namespace xshazwar.noize.pipeline {
                     InitLinearState<V, T>();
                 }
                 IManageBuffer<T> manager = states[typeof(T)];
+                if(options != NativeArrayOptions.UninitializedMemory){
+                    return (T) ((IManageBuffer<T>) states[typeof(T)]).GetBuffer(name, size, options);
+                }
                 if (size > -1){
                     return (T) ((IManageBuffer<T>) states[typeof(T)]).GetBuffer(name, size);
                 }else{

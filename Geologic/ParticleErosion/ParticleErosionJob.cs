@@ -1,3 +1,5 @@
+using System;
+
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Profiling;
 
@@ -335,7 +337,7 @@ namespace xshazwar.noize.geologic {
 
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
     public struct UpdatePoolValues: IJob {
-        NativeList<PoolUpdate> updates;
+        NativeQueue<PoolUpdate> updates;
         
         [NativeDisableContainerSafetyRestriction]
         NativeParallelHashMap<PoolKey, Pool> pools;
@@ -346,7 +348,7 @@ namespace xshazwar.noize.geologic {
         }
 
         public static JobHandle ScheduleRun(
-            NativeList<PoolUpdate> updates,
+            NativeQueue<PoolUpdate> updates,
             NativeParallelHashMap<PoolKey, Pool> pools,
             JobHandle deps
         ){
@@ -406,6 +408,144 @@ namespace xshazwar.noize.geologic {
                 }
             };
             return job.ScheduleParallel(res, 16, deps);
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+    public struct ErosionCycleJob: IJobFor {
+        FlowMaster fm;
+        NativeArray<Particle> particles;
+        int RND_SEED;
+        int MAX_STEPS;
+
+        public void Execute(int i){
+            Particle p = particles[i];
+            fm.ServiceParticle(ref p, RND_SEED + i, MAX_STEPS);
+            particles[i] = p;
+        }
+
+        public static JobHandle Schedule(
+            NativeArray<float> height,
+            NativeArray<float> pool,
+            NativeArray<float> flow,
+            NativeArray<float> track,
+            NativeArray<Particle> particles,
+            NativeQueue<ErosiveEvent> events,
+            int eventLimit,
+            int res,
+            JobHandle deps
+        ){
+            int seed = UnityEngine.Random.Range(0, Int32.MaxValue);
+            var job = new ErosionCycleJob {
+                fm = new FlowMaster {
+                    tile = new WorldTile {
+                        res = new int2(res, res),
+                        height = height,
+                        pool = pool,
+                        flow = flow,
+                        track = track
+                    },
+                    events = events,
+                    eventWriter = events.AsParallelWriter()
+                },
+                particles = particles,
+                RND_SEED = seed,
+                MAX_STEPS = eventLimit
+            };
+            return job.ScheduleParallel(particles.Length, particles.Length, deps);
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+    public struct UpdateFlowFromTrackJob: IJobFor {
+        WorldTile tile;
+        int res;
+
+        public void Execute(int z){
+            for (int x = 0; x < res; x++){
+                tile.UpdateFlowMapFromTrack(x, z);
+            }
+        }
+
+        public static JobHandle Schedule(
+            NativeArray<float> flow,
+            NativeArray<float> track,
+            int res,
+            JobHandle deps
+        ){
+            var job = new UpdateFlowFromTrackJob(){
+                res = res,
+                tile = new WorldTile {
+                    flow = flow,
+                    track = track,
+                    res = new int2(res, res)
+                }
+            };
+            return job.ScheduleParallel(res, res, deps);
+        }
+
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+    public struct WriteErosionMaps: IJob {
+
+        NativeQueue<PoolUpdate> poolUpdates;
+        NativeParallelHashMap<int, int> catchment;
+        FlowMaster fm;
+
+        public void Execute(){
+            ErosiveEvent evt = new ErosiveEvent();
+            while(fm.events.TryDequeue(out evt)){
+                fm.CommitUpdateToMaps(evt, ref poolUpdates, ref catchment);
+            }
+        }
+
+        public static JobHandle ScheduleRun(
+            NativeArray<float> height,
+            NativeArray<float> pool,
+            NativeArray<float> flow,
+            NativeArray<float> track,
+            NativeQueue<ErosiveEvent> events,
+            NativeQueue<PoolUpdate> poolUpdates,
+            NativeParallelHashMap<int, int> catchment,
+            NativeParallelMultiHashMap<int, int> boundary_BM,
+            NativeParallelHashMap<PoolKey, Pool> pools,
+            int res,
+            JobHandle deps
+        ){
+            
+            
+            var job = new WriteErosionMaps {
+                poolUpdates = poolUpdates,
+                catchment = catchment,
+                fm = new FlowMaster {
+                    tile = new WorldTile {
+                        res = new int2(res, res),
+                        height = height,
+                        pool = pool,
+                        flow = flow,
+                        track = track
+                    },
+                    events = events
+                }
+            };
+
+            JobHandle updatedMaps = job.Schedule(deps);
+            JobHandle writeFlowMap = UpdateFlowFromTrackJob.Schedule(flow, track, res, updatedMaps);
+
+            // return writeFlowMap;
+
+            JobHandle updatePoolsJob = UpdatePoolValues.ScheduleRun(poolUpdates, pools, updatedMaps);
+            JobHandle writePoolMap = DrawPoolsJob.Schedule(
+                new NativeSlice<float>(pool),
+                new NativeSlice<float>(height),
+                catchment,
+                boundary_BM,
+                pools,
+                res,
+                updatePoolsJob
+            );
+            return JobHandle.CombineDependencies(writePoolMap, writeFlowMap);
         }
     }
 
