@@ -486,8 +486,10 @@ namespace xshazwar.noize.geologic {
 
     }
 
+
+
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
-    public struct WriteErosionMaps: IJob {
+    public struct ProcessErosiveEventsJob: IJob {
 
         NativeQueue<PoolUpdate> poolUpdates;
         NativeParallelHashMap<int, int> catchment;
@@ -508,14 +510,10 @@ namespace xshazwar.noize.geologic {
             NativeQueue<ErosiveEvent> events,
             NativeQueue<PoolUpdate> poolUpdates,
             NativeParallelHashMap<int, int> catchment,
-            NativeParallelMultiHashMap<int, int> boundary_BM,
-            NativeParallelHashMap<PoolKey, Pool> pools,
             int res,
             JobHandle deps
         ){
-            
-            
-            var job = new WriteErosionMaps {
+            var job = new ProcessErosiveEventsJob {
                 poolUpdates = poolUpdates,
                 catchment = catchment,
                 fm = new FlowMaster {
@@ -529,13 +527,31 @@ namespace xshazwar.noize.geologic {
                     events = events
                 }
             };
+            return job.Schedule(deps);
 
-            JobHandle updatedMaps = job.Schedule(deps);
-            JobHandle writeFlowMap = UpdateFlowFromTrackJob.Schedule(flow, track, res, updatedMaps);
+        }
+    }
 
-            // return writeFlowMap;
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+    public struct WriteErosionMaps: IJob {
+        // Convenience wrapper for these interlocked jobs
+        public void Execute(){}
 
-            JobHandle updatePoolsJob = UpdatePoolValues.ScheduleRun(poolUpdates, pools, updatedMaps);
+        public static JobHandle ScheduleRun(
+            NativeArray<float> height,
+            NativeArray<float> pool,
+            NativeArray<float> flow,
+            NativeArray<float> track,
+            NativeQueue<ErosiveEvent> events,
+            NativeQueue<PoolUpdate> poolUpdates,
+            NativeParallelHashMap<int, int> catchment,
+            NativeParallelMultiHashMap<int, int> boundary_BM,
+            NativeParallelHashMap<PoolKey, Pool> pools,
+            int res,
+            JobHandle deps
+        ){
+            JobHandle writeFlowMap = UpdateFlowFromTrackJob.Schedule(flow, track, res, deps);
+            JobHandle updatePoolsJob = UpdatePoolValues.ScheduleRun(poolUpdates, pools, deps);
             JobHandle writePoolMap = DrawPoolsJob.Schedule(
                 new NativeSlice<float>(pool),
                 new NativeSlice<float>(height),

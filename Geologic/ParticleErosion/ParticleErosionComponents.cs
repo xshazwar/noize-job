@@ -896,11 +896,13 @@ namespace xshazwar.noize.geologic {
                     }
                     key = pool.supercededBy;
                 }
+                Debug.LogWarning($"No pool for {key.idx}");
+                return;
             }else{
                 // TODO
                 Debug.LogWarning("not handling negation yet");
             }
-            Debug.LogWarning("We should not really ever get here?");
+            Debug.LogWarning($"We should not really ever get here? {key.idx} -> {update.volume}");
         }
 
 
@@ -1106,6 +1108,17 @@ namespace xshazwar.noize.geologic {
         }
 
         // MultiThread
+        // public void ServiceParticle(ref Particle p, int seed, int maxSteps){
+        //     random = new Unity.Mathematics.Random((uint) seed);
+        //     if(p.isDead){
+        //         p.Reset(RandomPos());
+        //     }
+        //     int step = 0;
+        //     while(step < maxSteps){
+        //         step += Descend(ref p, maxSteps - step);
+        //     }
+        // }
+
         public void ServiceParticle(ref Particle p, int seed, int maxSteps){
             random = new Unity.Mathematics.Random((uint) seed);
             if(p.isDead){
@@ -1116,16 +1129,42 @@ namespace xshazwar.noize.geologic {
                 step += Descend(ref p, maxSteps - step);
             }
         }
+        
+
+        // public int Descend(ref Particle p, int maxSteps){
+        //     int step = 0;
+        //     bool done = false;
+        //     ErosiveEvent evt;
+        //     while(step < maxSteps && !done){
+        //         done = p.DescentComplete(ref tile, out evt);
+        //         eventWriter.Enqueue(evt);
+        //         if(done){
+        //             p.Reset(RandomPos());
+        //         }
+        //         step++;
+        //     }
+        //     return step;
+        // }
 
         public int Descend(ref Particle p, int maxSteps){
             int step = 0;
             bool done = false;
             ErosiveEvent evt;
+            int next = 0;
             while(step < maxSteps && !done){
                 done = p.DescentComplete(ref tile, out evt);
-                eventWriter.Enqueue(evt);
-                if(done){
+                next = tile.getIdx(p.pos);
+                if (next == -1){
                     p.Reset(RandomPos());
+                    continue;
+                }
+                tile.CascadeHeightMapChange(next);
+                // eventWriter.Enqueue(evt);
+                if(done){
+                    if(!tile.Flood(ref p)){
+                        p.Reset(RandomPos());
+                    }
+                    
                 }
                 step++;
             }
@@ -1138,19 +1177,24 @@ namespace xshazwar.noize.geologic {
             ref NativeQueue<PoolUpdate> poolUpdates,
             ref NativeParallelHashMap<int, int> catchment
         ){
-            if(evt.deltaPoolMap != 0f){
+            if(abs(evt.deltaPoolMap) > 0f){
                 PoolUpdate pu = new PoolUpdate {
-                    volume = evt.deltaPoolMap
+                    volume = 0.25f * evt.deltaPoolMap
                 };
                 catchment.TryGetValue(evt.idx, out pu.minimaIdx);
-                poolUpdates.Enqueue(pu);
+                if(pu.minimaIdx == 0){
+                    Debug.LogError($"No valid minima on pool update from evt idx {evt.idx} v: {evt.deltaPoolMap}");
+                }else{
+                    poolUpdates.Enqueue(pu);
+                }
+
             }
-            if(evt.deltaWaterTrack != 0f){
+            if(abs(evt.deltaWaterTrack) > 0f){
                 float v = tile.track[evt.idx];
                 v += evt.deltaWaterTrack;
                 tile.track[evt.idx] = v;
             }
-            if(evt.deltaSediment != 0f){
+            if(abs(evt.deltaSediment) > 0f){
                 float v = tile.height[evt.idx];
                 v += evt.deltaSediment;
                 tile.height[evt.idx] = v;

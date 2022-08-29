@@ -262,6 +262,7 @@ namespace xshazwar.noize.geologic {
         public float2 speed;
         public float volume; // = 1f;
         public float sediment; // = 0f;
+        public int spill;
         public bool isDead;
 
         public bool Equals(Particle other){
@@ -280,6 +281,7 @@ namespace xshazwar.noize.geologic {
             this.speed = new float2(0f, 0f);
             this.volume = 1f;
             this.sediment = 0;
+            this.spill = 10;
             isDead = false;
             // Debug.Log($"particle reset to {pos.x}, {pos.y}");
         }
@@ -303,6 +305,7 @@ namespace xshazwar.noize.geologic {
             float effF = friction*(1f - tile.flow[idx]);
             if(length(horiz *effF) < 1E-5){
                 // Should this write to the pool map? Not sure how it wouldn't
+                Debug.Log($"new pool at {idx} ?");
                 evt.deltaPoolMap = volume;
                 return true;
             }
@@ -323,7 +326,8 @@ namespace xshazwar.noize.geologic {
             };
             //Mass-Transfer (in MASS)
             // effD(plantDensity[pos]) -> local erosion strength (based on plant density) ***Can ignore? / Punt?***
-            float effD = 1f;
+            float effD = depositionRate * 1f;
+            // float effD = depositionRate * 0.5f;
             float c_eq = max(0f, tile.height[idx] - tile.height[nextIdx]);
             float cdiff = c_eq - sediment;
             sediment += effD * cdiff;
@@ -339,7 +343,7 @@ namespace xshazwar.noize.geologic {
 
     public struct WorldTile {
     
-        // public float SCALE;
+        static readonly float SCALE = 80f;
         public int2 res;
         
         [NativeDisableContainerSafetyRestriction]
@@ -358,6 +362,8 @@ namespace xshazwar.noize.geologic {
         static readonly int2 right = new int2(1, 0);
         static readonly int2 up = new int2(0, 1);
         static readonly int2 down = new int2(0, -1);
+        static readonly int2 ne = new int2(1, 1);
+        static readonly int2 nw = new int2(-1, 1);
 
         static readonly int[] nx =  new int[] {-1,-1,-1, 0, 0, 1, 1, 1};
         static readonly int[] ny =  new int[] {-1, 0, 1,-1, 1,-1, 0, 1};
@@ -394,7 +400,7 @@ namespace xshazwar.noize.geologic {
         }
 
         public float3 diff(float x, float z, int2 pos, int2 dir){
-            return new float3(x, (WIH(pos + dir) - WIH(pos)), z);
+            return new float3(x, SCALE * (WIH(pos + dir) - WIH(pos)), z);
         }
 
         public float WIH(int idx){
@@ -485,7 +491,153 @@ namespace xshazwar.noize.geologic {
                     height[idx] = value;
                 }
             }
+        }
 
+        private void LowBound(
+            int2 pos,
+            ref int2 drain,
+            ref float plane
+        ){
+            if(pos.x < 0 | pos.y < 0 | pos.x >= res.x | pos.y >= res.y) return;
+            
+            int idx = getIdx(pos);
+
+            if(pool[idx] == 0f) return;
+
+            //Below Drain Height
+            if(height[pos.x * res.y + drain.y] + pool[pos.x * res.y + drain.y] < height[drain.x * res.y + drain.y] + pool[drain.x * res.y + drain.y]){
+                return;
+            }
+            //Higher than Plane (we want lower)
+            if(height[pos.x*res.y+pos.y] + pool[pos.x*res.y+pos.y] >= plane){
+                return;
+            }
+
+            plane = height[pos.x * res.y + pos.y] + pool[pos.x * res.y + pos.y];                
+        }
+
+        private bool FindSet(
+            int2 pos,
+            float plane,
+            ref NativeArray<bool> tried,
+            ref NativeParallelHashMap<int, float> boundary,
+            ref NativeList<int2> floodSet,
+            ref bool drainFound,
+            ref int2 drain
+        ){
+            if(pos.x < 0 | pos.y < 0 | pos.x >= res.x | pos.y >= res.y) return true;
+            
+            int idx = getIdx(pos);
+            
+            if(tried[idx]) return true;
+            tried[idx] = true;
+
+            //Wall / Boundary
+            if((height[idx] + pool[idx]) > plane){
+                boundary[idx] = height[idx] + pool[idx];
+                return true;
+            }
+
+            //Drainage Point
+            if((height[idx] + pool[idx]) < plane){
+                //No Drain yet
+                if(!drainFound)
+                    drain = pos;
+                //Lower Drain
+                else if(pool[idx] + height[idx] < pool[drain.x * res.y+drain.y] + height[drain.x * res.y * drain.y])
+                    drain = pos;
+                drainFound = true;
+                return false;
+            }
+
+            floodSet.Add(pos);
+
+            if(!FindSet(pos + right, plane, ref tried, ref boundary, ref floodSet, ref drainFound, ref drain)) return false;
+            if(!FindSet(pos - right, plane, ref tried, ref boundary, ref floodSet, ref drainFound, ref drain)) return false;
+            if(!FindSet(pos + up, plane, ref tried, ref boundary, ref floodSet, ref drainFound, ref drain)) return false;
+            if(!FindSet(pos - up, plane, ref tried, ref boundary, ref floodSet, ref drainFound, ref drain)) return false;
+            if(!FindSet(pos + ne, plane, ref tried, ref boundary, ref floodSet, ref drainFound, ref drain)) return false;
+            if(!FindSet(pos - ne, plane, ref tried, ref boundary, ref floodSet, ref drainFound, ref drain)) return false;
+            if(!FindSet(pos + nw, plane, ref tried, ref boundary, ref floodSet, ref drainFound, ref drain)) return false;
+            if(!FindSet(pos - nw, plane, ref tried, ref boundary, ref floodSet, ref drainFound, ref drain)) return false;
+
+            return true;
+        }
+
+        public bool Flood(ref Particle part){
+            if(part.volume < Particle.minVol || part.spill-- <= 0) return false;
+            int2 pos = part.pos;
+            int idx = getIdx(pos);
+            int arrSize = res.x * res.y;
+            NativeArray<bool> tried = new NativeArray<bool>(arrSize, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            for (int i = 0; i < arrSize; i++){
+                tried[i] = false;
+            }
+            NativeParallelHashMap<int, float> boundary = new NativeParallelHashMap<int, float>(arrSize, Allocator.Temp);
+            NativeList<int2> floodSet = new NativeList<int2>(arrSize, Allocator.Temp);
+
+            bool drainFound = false;
+            int2 drain = new int2();
+            float plane = height[idx] + pool[idx];
+
+            int mbi = idx;
+            float mbv = plane;
+            while(part.volume > Particle.minVol && FindSet(pos, plane, ref tried, ref boundary, ref floodSet, ref drainFound, ref drain)){
+
+                //Find the Lowest Element on the Boundary
+                var boundIter = boundary.GetEnumerator();
+                boundIter.MoveNext();
+                var minbound = boundIter.Current;
+                mbi = minbound.Key;
+                mbv = minbound.Value;
+                while(boundIter.MoveNext()){
+                    if(boundIter.Current.Value < mbv){
+                        mbv = boundIter.Current.Value;
+                        mbi = boundIter.Current.Key;
+                    }
+                }
+
+                //Compute the Height of our Volume over the Set
+                float vheight = part.volume*Particle.volumeFactor/(float)floodSet.Length;
+
+                //Not High Enough: Fill 'er up
+                if(plane + vheight < mbv){
+                    plane += vheight;
+                }
+                else{
+                    part.volume -= (mbv - plane)/Particle.volumeFactor*(float)floodSet.Length;
+                    plane = mbv;
+                }
+                for(int i = 0; i < floodSet.Length; i ++){
+                    int idxs = getIdx(floodSet[i]);
+                    pool[idxs] = plane - height[idxs];
+                }
+                
+                boundary.Remove(mbi);
+                tried[mbi] = false;
+                pos.x = mbi / res.y;
+                pos.y = mbi % res.y;
+            }
+            if(drainFound){
+                LowBound(drain + right, ref drain, ref plane);
+                LowBound(drain - right, ref drain, ref plane);
+                LowBound(drain + up, ref drain, ref plane);
+                LowBound(drain - up, ref drain, ref plane);
+                
+                LowBound(drain + ne, ref drain, ref plane);
+                LowBound(drain - ne, ref drain, ref plane);
+                LowBound(drain + nw, ref drain, ref plane);
+                LowBound(drain - nw, ref drain, ref plane);
+
+                for(int i = 0; i < floodSet.Length; i ++){
+                    int idxs = getIdx(floodSet[i]);
+                    pool[idxs] = (plane > height[idxs]) ? (plane - height[idxs]) : 0f;
+                }
+                part.sediment /= (float)floodSet.Length; //Distribute Sediment in Pool
+                part.pos = drain;
+                return true;
+            }
+            return false;
         }
     }
 

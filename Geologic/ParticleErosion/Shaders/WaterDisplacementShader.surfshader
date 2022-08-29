@@ -96,7 +96,7 @@ BEGIN_CODE
    }
 
    float FloodedTerrainHeight(int x, int z){
-      return (_WaterValues[Idx(x, z)] + _TerrainValues[Idx(x, z)]) * _Height;
+      return 2000 + (_WaterValues[Idx(x, z)] + _TerrainValues[Idx(x, z)]) * _Height;
    }
 
    float VertexHeight(int x, int z){
@@ -108,7 +108,7 @@ BEGIN_CODE
       float minDryNeighborHeight = 1e+10f;
       float terrainHeight = _TerrainValues[Idx(x, z)];
       AreaWater(x, z, neighborsWater, maxNeigborTH, minDryNeighborHeight);
-      return neighborsWater && (maxNeigborTH < terrainHeight) && (minDryNeighborHeight > maxNeigborTH) ? maxNeigborTH * _Height : sqrt(-1);
+      return neighborsWater && (maxNeigborTH < terrainHeight) && (minDryNeighborHeight > maxNeigborTH) ? 2000 + maxNeigborTH * _Height : sqrt(-1);
    }
 
    void ApplyNormal(inout VertexData v, in float x, in float z){
