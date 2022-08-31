@@ -60,7 +60,7 @@ namespace xshazwar.noize.geologic {
         public float magnitude = 0.5f;
 
         const int PARTICLE_COUNT = 1; // maybe leave some overhead threads for other jobs to run during erosion? Remeshing comes to mind
-        const int EVENT_LIMIT = 100000; // event limit per particle before intermediate results are calculated. Should align to a frame or second or something...?
+        const int EVENT_LIMIT = 250; // event limit per particle before intermediate results are calculated. Should align to a frame or second or something...?
         const int Cycles = 10;
 
         private Mesh waterMesh;
@@ -97,7 +97,7 @@ namespace xshazwar.noize.geologic {
                 // CS.CopyFrom(new NativeSlice<float>(poolMap));
                 // CS.CopyFrom(new NativeSlice<float>(debugViz));
                 // CS.CopyFrom(new NativeSlice<float>(particleTrack));
-                CS.CopyFrom(new NativeSlice<float>(heightMap));
+                CS.CopyFrom(new NativeSlice<float>(streamMap));
             }
             texture.Apply();
         }
@@ -180,8 +180,8 @@ namespace xshazwar.noize.geologic {
             poolMatProps.SetFloat("_Data_Res", generatorResolution * 1.0f);
 
             streamMatProps = new MaterialPropertyBlock();
-            streamMatProps.SetBuffer("_WaterValues", streamBuffer);
-            streamMatProps.SetBuffer("_TerrainValues", heightBuffer);
+            streamMatProps.SetBuffer("_WaterValues", heightBuffer);
+            streamMatProps.SetBuffer("_TerrainValues", streamBuffer);
             streamMatProps.SetFloat("_Height", tileHeight);
             streamMatProps.SetFloat("_Mesh_Size", tileSize);
             streamMatProps.SetFloat("_Mesh_Res", meshResolution * 1.0f);
@@ -229,12 +229,13 @@ namespace xshazwar.noize.geologic {
                 Debug.Log("Job done!");
                 PushBuffer();
                 #if UNITY_EDITOR
-                // ApplyTexture();
+                ApplyTexture();
                 #endif
             }else if(updateWater && !erosionJobCtl.isRunning){
                 // GenerateJunk();
                 // ScheduleJob();
-                TriggerCycle();
+                // TriggerCycle();
+                TriggerCycleSingleThread();
                 // updateWater = false;
             }
             // else if(updateWater){
@@ -339,14 +340,23 @@ namespace xshazwar.noize.geologic {
         public void TriggerCycle(){
             JobHandle handle = default;
             for (int i = 0; i < Cycles; i++){
-                // JobHandle cycleJob = ErosionCycleJob.Schedule(heightMap, poolMap, streamMap, particleTrack, particles, events, EVENT_LIMIT, generatorResolution, handle);
-                // JobHandle processJob = ProcessErosiveEventsJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, events, poolUpdates, catchment, generatorResolution, cycleJob);
-                // handle = processJob;
-                handle = ErosionCycleJob.Schedule(heightMap, poolMap, streamMap, particleTrack, particles, events, EVENT_LIMIT, generatorResolution, handle);
+                JobHandle cycleJob = ErosionCycleMultiThreadJob.Schedule(heightMap, poolMap, streamMap, particleTrack, particles, events, EVENT_LIMIT, generatorResolution, handle);
+                JobHandle processJob = ProcessErosiveEventsJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, events, poolUpdates, catchment, generatorResolution, cycleJob);
+                handle = processJob;
             }
-            // JobHandle writerJob = WriteErosionMaps.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, events, poolUpdates, catchment, boundary_BM, pools, generatorResolution, handle);
+            JobHandle writerJob = WriteErosionMaps.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, events, poolUpdates, catchment, boundary_BM, pools, generatorResolution, handle);
             Debug.LogWarning("Cycle started");
-            // erosionJobCtl.TrackJob(writerJob);
+            erosionJobCtl.TrackJob(writerJob);
+        }
+
+        public void TriggerCycleSingleThread(){
+            JobHandle handle = default;
+            JobHandle cycle = default;
+            for (int i = 0; i < Cycles; i++){
+                cycle = ErosionCycleSingleThreadJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, particles, events, EVENT_LIMIT, generatorResolution, handle);
+                handle = UpdateFlowFromTrackJob.Schedule(streamMap, particleTrack, generatorResolution, cycle);
+            }
+            Debug.LogWarning("Cycle started");
             erosionJobCtl.TrackJob(handle);
         }
 

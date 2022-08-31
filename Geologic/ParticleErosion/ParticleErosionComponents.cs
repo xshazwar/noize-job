@@ -1108,17 +1108,6 @@ namespace xshazwar.noize.geologic {
         }
 
         // MultiThread
-        // public void ServiceParticle(ref Particle p, int seed, int maxSteps){
-        //     random = new Unity.Mathematics.Random((uint) seed);
-        //     if(p.isDead){
-        //         p.Reset(RandomPos());
-        //     }
-        //     int step = 0;
-        //     while(step < maxSteps){
-        //         step += Descend(ref p, maxSteps - step);
-        //     }
-        // }
-
         public void ServiceParticle(ref Particle p, int seed, int maxSteps){
             random = new Unity.Mathematics.Random((uint) seed);
             if(p.isDead){
@@ -1129,42 +1118,60 @@ namespace xshazwar.noize.geologic {
                 step += Descend(ref p, maxSteps - step);
             }
         }
-        
-
-        // public int Descend(ref Particle p, int maxSteps){
-        //     int step = 0;
-        //     bool done = false;
-        //     ErosiveEvent evt;
-        //     while(step < maxSteps && !done){
-        //         done = p.DescentComplete(ref tile, out evt);
-        //         eventWriter.Enqueue(evt);
-        //         if(done){
-        //             p.Reset(RandomPos());
-        //         }
-        //         step++;
-        //     }
-        //     return step;
-        // }
 
         public int Descend(ref Particle p, int maxSteps){
             int step = 0;
             bool done = false;
             ErosiveEvent evt;
-            int next = 0;
             while(step < maxSteps && !done){
                 done = p.DescentComplete(ref tile, out evt);
-                next = tile.getIdx(p.pos);
-                if (next == -1){
-                    p.Reset(RandomPos());
-                    continue;
-                }
-                tile.CascadeHeightMapChange(next);
-                // eventWriter.Enqueue(evt);
+                eventWriter.Enqueue(evt);
                 if(done){
+                    p.Reset(RandomPos());
+                }
+                step++;
+            }
+            return step;
+        }
+
+        // Single Thread
+        public void ServiceParticleSingle(ref Particle p, int seed, int maxParticles){
+            random = new Unity.Mathematics.Random((uint) seed);
+            if(p.isDead){
+                p.Reset(RandomPos());
+            }
+            int partCount = 0;
+            while(partCount < maxParticles){
+                DescendSingle(ref p);
+                partCount++;
+            }
+        }
+        
+
+
+
+        public int DescendSingle(ref Particle p){
+            int step = 0;
+            bool done = false;
+            ErosiveEvent evt;
+            int next = 0;
+            while(true){
+                done = p.DescentCompleteSingle(ref tile, out evt);
+                // next = tile.getIdx(p.pos);
+                // if (next == -1){
+                //     p.Reset(RandomPos());
+                //     return step;
+                // }
+                // tile.CascadeHeightMapChange(next);
+                if(done){
+                    // Debug.Log($"stuck @ {p.pos.x}, {p.pos.y} v:{p.volume}");
                     if(!tile.Flood(ref p)){
+                        // Debug.Log($"No flood {p.volume} remains");
                         p.Reset(RandomPos());
+                        return step;
                     }
-                    
+                    // Debug.Log($"drain jump >> {p.pos.x}, {p.pos.y}");
+                    done = false;
                 }
                 step++;
             }

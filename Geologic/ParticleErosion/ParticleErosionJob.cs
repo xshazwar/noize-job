@@ -412,7 +412,7 @@ namespace xshazwar.noize.geologic {
     }
 
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
-    public struct ErosionCycleJob: IJobFor {
+    public struct ErosionCycleMultiThreadJob: IJobFor {
         FlowMaster fm;
         NativeArray<Particle> particles;
         int RND_SEED;
@@ -436,7 +436,7 @@ namespace xshazwar.noize.geologic {
             JobHandle deps
         ){
             int seed = UnityEngine.Random.Range(0, Int32.MaxValue);
-            var job = new ErosionCycleJob {
+            var job = new ErosionCycleMultiThreadJob {
                 fm = new FlowMaster {
                     tile = new WorldTile {
                         res = new int2(res, res),
@@ -453,6 +453,51 @@ namespace xshazwar.noize.geologic {
                 MAX_STEPS = eventLimit
             };
             return job.ScheduleParallel(particles.Length, particles.Length, deps);
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+    public struct ErosionCycleSingleThreadJob: IJob {
+        FlowMaster fm;
+        NativeArray<Particle> particles;
+        int RND_SEED;
+        int MAX_STEPS;
+
+        public void Execute(){
+            Particle p = particles[0];
+            fm.ServiceParticleSingle(ref p, RND_SEED, MAX_STEPS);
+            particles[0] = p;
+        }
+
+        public static JobHandle ScheduleRun(
+            NativeArray<float> height,
+            NativeArray<float> pool,
+            NativeArray<float> flow,
+            NativeArray<float> track,
+            NativeArray<Particle> particles,
+            NativeQueue<ErosiveEvent> events,
+            int eventLimit,
+            int res,
+            JobHandle deps
+        ){
+            int seed = UnityEngine.Random.Range(0, Int32.MaxValue);
+            var job = new ErosionCycleSingleThreadJob {
+                fm = new FlowMaster {
+                    tile = new WorldTile {
+                        res = new int2(res, res),
+                        height = height,
+                        pool = pool,
+                        flow = flow,
+                        track = track
+                    },
+                    events = events,
+                    eventWriter = events.AsParallelWriter()
+                },
+                particles = particles,
+                RND_SEED = seed,
+                MAX_STEPS = eventLimit
+            };
+            return job.Schedule(deps);
         }
     }
 

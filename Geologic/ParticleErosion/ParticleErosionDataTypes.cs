@@ -264,6 +264,7 @@ namespace xshazwar.noize.geologic {
         public float sediment; // = 0f;
         public int spill;
         public bool isDead;
+        public int age;
 
         public bool Equals(Particle other){
             // TODO use lazy comparer for the floats
@@ -283,6 +284,7 @@ namespace xshazwar.noize.geologic {
             this.sediment = 0;
             this.spill = 10;
             isDead = false;
+            age = 0;
             // Debug.Log($"particle reset to {pos.x}, {pos.y}");
         }
 
@@ -315,6 +317,7 @@ namespace xshazwar.noize.geologic {
             pos.y += (int) speed.y;
             if(tile.OutOfBounds(pos)){
                 // TODO transfer to other tile queue
+                Debug.Log("particle out of bounds");
                 volume = 0f;
                 return true;
             }
@@ -334,16 +337,112 @@ namespace xshazwar.noize.geologic {
             evt.deltaSediment = -effD * cdiff;
 
             //Evaporate (Mass Conservative)
-            float effR = evapRate*(1f - 0.2f * tile.flow[idx]);
+            float effR = evapRate * (1f - 0.2f * tile.flow[idx]);
             sediment /= (1.0f - effR);
             volume *= (1.0f - effR);
+            // Debug.Log($"pstate {pos.x}, {pos.y}, S:{sediment}, V:{volume} @{effR}");
             return false;
+        }
+        public bool DescentCompleteSingle(ref WorldTile tile, out ErosiveEvent evt){
+            int idx = tile.getIdx(pos);
+            evt = idx;
+            if (volume < minVol) return true;
+            
+            float trackVolume = tile.track[idx];
+            trackVolume += volume;
+            tile.track[idx] = trackVolume;
+
+            float3 norm = tile.Normal(pos);
+            float2 horiz = new float2(norm.x, norm.z);
+            float effF = friction*(1f - tile.flow[idx]);
+            if(length(horiz *effF) < 1E-5){
+                return true;
+            }
+            speed = lerp(horiz, speed, effF);
+            speed = sqrt(2.0f) * normalize(speed);
+            int diffX = (int) round(speed.x);
+            int diffY = (int) round(speed.y);
+            Debug.Log($"poss diff >> ({diffX}, {diffY})");
+            pos.x += (int) round(speed.x);
+            pos.y += (int) round(speed.y);
+
+            // Out-Of-Bounds
+            if(tile.OutOfBounds(pos)){
+                // TODO transfer to other tile queue
+                // Debug.Log("particle out of bounds");
+                volume = 0f;
+                return true;
+            }
+            int nextIdx = tile.getIdx(pos);
+            
+            // Particle is in Pool
+            if(tile.StandingWater(pos)){
+                return true;
+            };
+
+            //Mass-Transfer (in MASS)
+            // effD(plantDensity[pos]) -> local erosion strength (based on plant density) ***Can ignore? / Punt?***
+            float effD = depositionRate * 1f;
+            float c_eq = max(0f, tile.height[idx] - tile.height[nextIdx]);
+            float cdiff = c_eq - sediment;
+            float heightChange = effD * cdiff;
+            sediment += heightChange;
+            float currentHeight = tile.height[idx];
+            currentHeight -= effD * cdiff;
+            tile.height[idx] = currentHeight;
+
+            //Evaporate (Mass Conservative)
+            float effR = evapRate * (1f - 0.2f * tile.flow[idx]);
+            sediment /= (1.0f - effR);
+            volume *= (1.0f - effR);
+            // Cascade(pos, ref tile);
+            age++;
+            // Debug.Log($"pstate {pos.x}, {pos.y}, S:{sediment}, V:{volume} @{age}");
+            return false;
+        }
+        void Cascade(int2 pos, ref WorldTile tile){
+            int idx = tile.getIdx(pos);
+            if(tile.pool[idx] > 0f) return;
+            int idxn = 0;
+            int2 n = new int2();
+            float diff = 0f;
+            float transfer = 0f;
+            float value = 0f;
+            float excess = 0f;
+            for(int i = 0; i < 8; i ++){
+                n.x = pos.x + WorldTile.nx[i];
+                n.y = pos.y + WorldTile.ny[i];
+                if (tile.OutOfBounds(n)) continue;
+                idxn = tile.getIdx(n);
+                if(tile.pool[idxn] > 0f) continue;
+                diff = tile.height[idx] - tile.height[idxn];
+                if (diff == 0f) continue;
+                excess = abs(diff) - WorldTile.maxdiff;
+                if (excess <= 0f) continue;
+                transfer = WorldTile.settling * excess / 2.0f;
+                if (diff > 0f){
+                    value = tile.height[idx];
+                    value -= transfer;
+                    tile.height[idx] = value;
+                    value = tile.height[idxn];
+                    value += transfer;
+                    tile.height[idxn] = value;
+                }
+                else {
+                    value = tile.height[idxn];
+                    value -= transfer;
+                    tile.height[idxn] = value;
+                    value = tile.height[idx];
+                    value += transfer;
+                    tile.height[idx] = value;
+                }
+            }
         }
     }
 
     public struct WorldTile {
     
-        static readonly float SCALE = 80f;
+        static readonly float SCALE = 1f;
         public int2 res;
         
         [NativeDisableContainerSafetyRestriction]
@@ -365,11 +464,12 @@ namespace xshazwar.noize.geologic {
         static readonly int2 ne = new int2(1, 1);
         static readonly int2 nw = new int2(-1, 1);
 
-        static readonly int[] nx =  new int[] {-1,-1,-1, 0, 0, 1, 1, 1};
-        static readonly int[] ny =  new int[] {-1, 0, 1,-1, 1,-1, 0, 1};
+        static public readonly int[] nx =  new int[] {-1,-1,-1, 0, 0, 1, 1, 1};
+        static public readonly int[] ny =  new int[] {-1, 0, 1,-1, 1,-1, 0, 1};
 
-        static readonly float maxdiff = 0.01f;  // maximum diff under which no modification will be made in either direction
-        static readonly float settling = 0.1f;
+        static public readonly float maxdiff = 0.01f;  // maximum diff under which no modification will be made in either direction
+        static public readonly float settling = 0.1f;
+        static readonly float lRate = 0.01f;
 
         public float3 Normal(int2 pos){
             // returns normal of the (WIH)
@@ -451,7 +551,8 @@ namespace xshazwar.noize.geologic {
 
         public void UpdateFlowMapFromTrack(int x, int z){
             int i = getIdx(x, z);
-            flow[i] = (0.99f * flow[i]) + (0.5f * track[i] * (1f / ( 1f + 50f * track[i])));
+            flow[i] = ((1f - lRate) * flow[i]) + (lRate * 50.0f * track[i] / (1f + 50.0f*track[i]));
+            track[i] = 0f;
         }
 
         public void CascadeHeightMapChange(int idx){
@@ -471,9 +572,9 @@ namespace xshazwar.noize.geologic {
                 if(pool[idxn] > 0f) continue;
                 diff = height[idx] - height[idxn];
                 if (diff == 0f) continue;
-                excess = abs(diff) - maxdiff;
+                excess = abs(diff) - WorldTile.maxdiff;
                 if (excess <= 0f) continue;
-                transfer = settling * excess / 2.0f;
+                transfer = WorldTile.settling * excess / 2.0f;
                 if (diff > 0f){
                     value = height[idx];
                     value -= transfer;
@@ -541,11 +642,14 @@ namespace xshazwar.noize.geologic {
             //Drainage Point
             if((height[idx] + pool[idx]) < plane){
                 //No Drain yet
-                if(!drainFound)
+                if(!drainFound){
                     drain = pos;
+                }
                 //Lower Drain
-                else if(pool[idx] + height[idx] < pool[drain.x * res.y+drain.y] + height[drain.x * res.y * drain.y])
+                else if(pool[idx] + height[idx] < pool[drain.x * res.y+drain.y] + height[drain.x * res.y * drain.y]){
                     drain = pos;
+                }
+                    
                 drainFound = true;
                 return false;
             }
@@ -565,7 +669,11 @@ namespace xshazwar.noize.geologic {
         }
 
         public bool Flood(ref Particle part){
-            if(part.volume < Particle.minVol || part.spill-- <= 0) return false;
+            if(part.volume < Particle.minVol || part.spill-- <= 0)
+            {
+                // Debug.Log("no more spills / out of volume");
+                return false;
+            }
             int2 pos = part.pos;
             int idx = getIdx(pos);
             int arrSize = res.x * res.y;
@@ -582,6 +690,7 @@ namespace xshazwar.noize.geologic {
 
             int mbi = idx;
             float mbv = plane;
+            int c = 0;
             while(part.volume > Particle.minVol && FindSet(pos, plane, ref tried, ref boundary, ref floodSet, ref drainFound, ref drain)){
 
                 //Find the Lowest Element on the Boundary
@@ -617,6 +726,7 @@ namespace xshazwar.noize.geologic {
                 tried[mbi] = false;
                 pos.x = mbi / res.y;
                 pos.y = mbi % res.y;
+                c++;
             }
             if(drainFound){
                 LowBound(drain + right, ref drain, ref plane);
@@ -635,8 +745,10 @@ namespace xshazwar.noize.geologic {
                 }
                 part.sediment /= (float)floodSet.Length; //Distribute Sediment in Pool
                 part.pos = drain;
+                // Debug.Log("drain found");
                 return true;
             }
+            // Debug.Log($"no drain found after {c} rounds");
             return false;
         }
     }
