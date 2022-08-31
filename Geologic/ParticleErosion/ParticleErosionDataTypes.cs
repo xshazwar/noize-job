@@ -12,6 +12,10 @@ using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
 
+#if UNITY_EDITOR
+using UnityEngine.Assertions;
+#endif
+
 using static Unity.Mathematics.math;
 
 using xshazwar.noize.pipeline;
@@ -253,7 +257,8 @@ namespace xshazwar.noize.geologic {
         public static readonly float evapRate = 0.001f;
         public static readonly float depositionRate = 1.2f*0.08f;
         public static readonly float minVol = 0.01f;
-        public static readonly float friction = 0.25f;
+        // public static readonly float friction = 0.25f;
+        public static readonly float friction = 0.025f;
         public static readonly float volumeFactor = 0.5f;
         private static readonly bool2 TRUE2 = new bool2(true, true);
         
@@ -354,15 +359,12 @@ namespace xshazwar.noize.geologic {
 
             float3 norm = tile.Normal(pos);
             float2 horiz = new float2(norm.x, norm.z);
-            float effF = friction*(1f - tile.flow[idx]);
+            float effF = friction * (1f - tile.flow[idx]);
             if(length(horiz *effF) < 1E-5){
                 return true;
             }
             speed = lerp(horiz, speed, effF);
             speed = sqrt(2.0f) * normalize(speed);
-            int diffX = (int) round(speed.x);
-            int diffY = (int) round(speed.y);
-            Debug.Log($"poss diff >> ({diffX}, {diffY})");
             pos.x += (int) round(speed.x);
             pos.y += (int) round(speed.y);
 
@@ -395,7 +397,7 @@ namespace xshazwar.noize.geologic {
             float effR = evapRate * (1f - 0.2f * tile.flow[idx]);
             sediment /= (1.0f - effR);
             volume *= (1.0f - effR);
-            // Cascade(pos, ref tile);
+            Cascade(pos, ref tile);
             age++;
             // Debug.Log($"pstate {pos.x}, {pos.y}, S:{sediment}, V:{volume} @{age}");
             return false;
@@ -442,7 +444,7 @@ namespace xshazwar.noize.geologic {
 
     public struct WorldTile {
     
-        static readonly float SCALE = 1f;
+        static readonly float SCALE = 80f;
         public int2 res;
         
         [NativeDisableContainerSafetyRestriction]
@@ -463,36 +465,65 @@ namespace xshazwar.noize.geologic {
         static readonly int2 down = new int2(0, -1);
         static readonly int2 ne = new int2(1, 1);
         static readonly int2 nw = new int2(-1, 1);
+        static readonly int2 sw = new int2(-1, -1);
+        static readonly int2 se = new int2(1, -1);
 
         static public readonly int[] nx =  new int[] {-1,-1,-1, 0, 0, 1, 1, 1};
         static public readonly int[] ny =  new int[] {-1, 0, 1,-1, 1,-1, 0, 1};
+
+        static public readonly int[] normX =  new int[] {-1,-1,-1, 0, 0, 1, 1, 1};
+        static public readonly int[] normY =  new int[] {-1, 0, 1,-1, 1,-1, 0, 1};
 
         static public readonly float maxdiff = 0.01f;  // maximum diff under which no modification will be made in either direction
         static public readonly float settling = 0.1f;
         static readonly float lRate = 0.01f;
 
+        // public float3 Normal(int2 pos){
+        //     // returns normal of the (WIH)
+            
+        //     float3 n = cross(
+        //         diff(0, 1, pos, right),
+        //         diff(1, 0, pos, up)
+        //     );
+        //     n += cross(
+        //         diff(0, -1, pos, left),
+        //         diff(-1, 0, pos, down)
+        //     );
+
+        //     n += cross(
+        //         diff(1, 0, pos, up),
+        //         diff(0, -1, pos, left)
+        //     );
+
+        //     n += cross(
+        //         diff(-1, 0, pos, up),
+        //         diff(0, 1, pos, right)
+        //     );
+        //     return normalize(n);
+        // }
+
         public float3 Normal(int2 pos){
             // returns normal of the (WIH)
             
-            float3 n = cross(
-                diff(0, 1, pos, right),
-                diff(1, 0, pos, up)
-            );
-            n += cross(
-                diff(0, -1, pos, left),
-                diff(-1, 0, pos, down)
-            );
+            float3 n = Normal(pos + nw, right, down);
+            n += Normal(pos + ne, down, left);
+            n += Normal(pos + se, left, up);
+            n += Normal(pos + sw, up, right);
+            n += Normal(pos, left, up);
+            n += Normal(pos, up, right);
+            n += Normal(pos, right, down);
+            n += Normal(pos, down, left);
+            // n += Normal(pos + up, se, sw);
+            // n += Normal(pos + down, nw, ne);
 
-            n += cross(
-                diff(1, 0, pos, up),
-                diff(0, -1, pos, left)
-            );
-
-            n += cross(
-                diff(-1, 0, pos, up),
-                diff(0, 1, pos, right)
-            );
             return normalize(n);
+        }
+
+        public float3 Normal(int2 pos, int2 a, int2 b){
+            return cross(
+                HiIVec(pos, 0, 0) - HiIVec(pos, a.x, a.y),
+                HiIVec(pos, 0, 0) - HiIVec(pos, b.x, b.y)
+            );
         }
 
         public bool StandingWater(int2 pos){
@@ -503,14 +534,37 @@ namespace xshazwar.noize.geologic {
             return new float3(x, SCALE * (WIH(pos + dir) - WIH(pos)), z);
         }
 
+        // public float WIH(int idx){
+        //     return height[idx] + pool[idx];
+        // }
+
         public float WIH(int idx){
-            return height[idx] + pool[idx];
+            return height[idx] + pool[idx]; // + flow[idx];
         }
 
         public float WIH(int2 pos){
             return WIH(SafeIdx(pos));
         }
 
+        public float WIH(int x, int z){
+            return WIH(getIdx(x, z));
+        }
+
+        public float WIH(int2 pos, int dx, int dz){
+            return WIH(SafeIdx(pos.x + dx, pos.y + dz));
+        }
+
+        public float3 HiIVec(int2 pos, int dx, int dz){
+            return new float3(dx, WIH(pos, dx, dz), dz);
+        }
+        public int SafeIdx(int x, int z){
+            if(x < 0) x = 0;
+            if(z < 0) z = 0;
+            if(x >= res.x) x = res.x - 1;
+            if(z >= res.y) z = res.y - 1;
+            return getIdx(x, z);
+        }        
+        
         public int SafeIdx(int2 pos){
             int idx = getIdx(pos);
             if (idx >= 0){
@@ -553,6 +607,8 @@ namespace xshazwar.noize.geologic {
             int i = getIdx(x, z);
             flow[i] = ((1f - lRate) * flow[i]) + (lRate * 50.0f * track[i] / (1f + 50.0f*track[i]));
             track[i] = 0f;
+
+            // waterpath[i] = (1.0-lrate)*waterpath[i] + lrate*50.0f*track[i]/(1.0f + 50.0f*track[i]);
         }
 
         public void CascadeHeightMapChange(int idx){

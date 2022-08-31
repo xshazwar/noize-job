@@ -61,7 +61,7 @@ namespace xshazwar.noize.geologic {
 
         const int PARTICLE_COUNT = 1; // maybe leave some overhead threads for other jobs to run during erosion? Remeshing comes to mind
         const int EVENT_LIMIT = 250; // event limit per particle before intermediate results are calculated. Should align to a frame or second or something...?
-        const int Cycles = 10;
+        const int Cycles = 1;
 
         private Mesh waterMesh;
         private ComputeBuffer poolBuffer;
@@ -180,8 +180,8 @@ namespace xshazwar.noize.geologic {
             poolMatProps.SetFloat("_Data_Res", generatorResolution * 1.0f);
 
             streamMatProps = new MaterialPropertyBlock();
-            streamMatProps.SetBuffer("_WaterValues", heightBuffer);
-            streamMatProps.SetBuffer("_TerrainValues", streamBuffer);
+            streamMatProps.SetBuffer("_WaterValues", streamBuffer);
+            streamMatProps.SetBuffer("_TerrainValues", heightBuffer);
             streamMatProps.SetFloat("_Height", tileHeight);
             streamMatProps.SetFloat("_Mesh_Size", tileSize);
             streamMatProps.SetFloat("_Mesh_Res", meshResolution * 1.0f);
