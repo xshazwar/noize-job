@@ -254,13 +254,22 @@ namespace xshazwar.noize.geologic {
         
         // Parameters
         public static readonly float density = 1.0f;  //This gives varying amounts of inertia and stuff...
+        // original
+        // public static readonly float evapRate = 0.001f;
         public static readonly float evapRate = 0.001f;
-        public static readonly float depositionRate = 1.2f*0.08f;
+        
+        // public static readonly float depositionRate = 1.2f*0.08f; // original
+        public static readonly float depositionRate = 0.5f*0.08f;
         public static readonly float minVol = 0.01f;
-        // public static readonly float friction = 0.25f;
-        public static readonly float friction = 0.025f;
+        
+        // public static readonly float friction = 0.25f; // original
+        // public static readonly float friction = 0.025f;
+        public static readonly float friction = 0.25f;
+        // public static readonly float volumeFactor = 0.5f; // original
         public static readonly float volumeFactor = 0.5f;
         private static readonly bool2 TRUE2 = new bool2(true, true);
+
+        public static readonly float MINIMUM_MOMENTUM = 1E-5f;
         
         // Fields
         public int2 pos;
@@ -309,8 +318,8 @@ namespace xshazwar.noize.geologic {
             evt.deltaWaterTrack = volume;
             float3 norm = tile.Normal(pos);
             float2 horiz = new float2(norm.x, norm.z);
-            float effF = friction*(1f - tile.flow[idx]);
-            if(length(horiz *effF) < 1E-5){
+            float effF = friction * (1f - tile.flow[idx]);
+            if(length(horiz *effF) < MINIMUM_MOMENTUM){
                 // Should this write to the pool map? Not sure how it wouldn't
                 Debug.Log($"new pool at {idx} ?");
                 evt.deltaPoolMap = volume;
@@ -360,7 +369,7 @@ namespace xshazwar.noize.geologic {
             float3 norm = tile.Normal(pos);
             float2 horiz = new float2(norm.x, norm.z);
             float effF = friction * (1f - tile.flow[idx]);
-            if(length(horiz *effF) < 1E-5){
+            if(length(horiz *effF) < MINIMUM_MOMENTUM){
                 return true;
             }
             speed = lerp(horiz, speed, effF);
@@ -385,6 +394,7 @@ namespace xshazwar.noize.geologic {
             //Mass-Transfer (in MASS)
             // effD(plantDensity[pos]) -> local erosion strength (based on plant density) ***Can ignore? / Punt?***
             float effD = depositionRate * 1f;
+            // float effD = depositionRate * 0.01f;
             float c_eq = max(0f, tile.height[idx] - tile.height[nextIdx]);
             float cdiff = c_eq - sediment;
             float heightChange = effD * cdiff;
@@ -443,8 +453,10 @@ namespace xshazwar.noize.geologic {
     }
 
     public struct WorldTile {
-    
-        static readonly float SCALE = 80f;
+
+        static readonly float SCALE = 256f * (3000f / 4000f);
+        // static readonly float SCALE = 80f;
+        // static readonly float SCALE = 0.1f;
         public int2 res;
         
         [NativeDisableContainerSafetyRestriction]
@@ -474,7 +486,9 @@ namespace xshazwar.noize.geologic {
         static public readonly int[] normX =  new int[] {-1,-1,-1, 0, 0, 1, 1, 1};
         static public readonly int[] normY =  new int[] {-1, 0, 1,-1, 1,-1, 0, 1};
 
-        static public readonly float maxdiff = 0.01f;  // maximum diff under which no modification will be made in either direction
+        // static public readonly float maxdiff = 0.01f;  // maximum diff under which no modification will be made in either direction
+        static public readonly float maxdiff = 0.00005f; 
+        // static public readonly float settling = 0.1f;
         static public readonly float settling = 0.1f;
         static readonly float lRate = 0.01f;
 
@@ -538,25 +552,32 @@ namespace xshazwar.noize.geologic {
         //     return height[idx] + pool[idx];
         // }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float WIH(int idx){
-            return height[idx] + pool[idx]; // + flow[idx];
+            return SCALE * (height[idx] + pool[idx]);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float WIH(int2 pos){
             return WIH(SafeIdx(pos));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float WIH(int x, int z){
             return WIH(getIdx(x, z));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float WIH(int2 pos, int dx, int dz){
             return WIH(SafeIdx(pos.x + dx, pos.y + dz));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float3 HiIVec(int2 pos, int dx, int dz){
             return new float3(dx, WIH(pos, dx, dz), dz);
         }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int SafeIdx(int x, int z){
             if(x < 0) x = 0;
             if(z < 0) z = 0;
@@ -565,11 +586,12 @@ namespace xshazwar.noize.geologic {
             return getIdx(x, z);
         }        
         
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int SafeIdx(int2 pos){
-            int idx = getIdx(pos);
-            if (idx >= 0){
-                return idx;
-            }
+            // int idx = getIdx(pos);
+            // if (idx >= 0){
+            //     return idx;
+            // }
             // TODO interpolate a normal off the edge
             if(pos.x < 0) pos.x = 0;
             if(pos.y < 0) pos.y = 0;
@@ -580,9 +602,9 @@ namespace xshazwar.noize.geologic {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int getIdx(int x, int z){
-            if(x >= res.x || z >= res.y || x < 0 || z < 0){
-                return -1;
-            }
+            // if(x >= res.x || z >= res.y || x < 0 || z < 0){
+            //     return -1;
+            // }
             return x * res.x + z;
         }
 
@@ -605,7 +627,25 @@ namespace xshazwar.noize.geologic {
 
         public void UpdateFlowMapFromTrack(int x, int z){
             int i = getIdx(x, z);
-            flow[i] = ((1f - lRate) * flow[i]) + (lRate * 50.0f * track[i] / (1f + 50.0f*track[i]));
+            float pv = flow[i];
+            float tv = track[i];
+            // flow[i] = ((1f - lRate) * pv) + (lRate * 50.0f * track[i]) / (1f + 50.0f*track[i]);
+            
+            // flow[i] = ((1f - lRate) * pv) + (lRate * 255.0f * tv) / (1f + 255.0f* tv);
+            if(pool[i] > 0f){
+                flow[i] = 0f;
+            }
+            else if(tv > 0f){
+                // flow[i] = ((1f - lRate) * pv) + (lRate * 255.0f * tv) / (1f + 255.0f* tv);
+                flow[i] = ((1f - lRate) * pv) + (lRate * 50.0f * tv) / (1f + 50.0f* tv);
+            }else{
+                if(pv < .005f){
+                    flow[i] = .25f * pv;
+                }else{
+                    flow[i] = (1f - lRate) * pv;
+                }
+                
+            }
             track[i] = 0f;
 
             // waterpath[i] = (1.0-lrate)*waterpath[i] + lrate*50.0f*track[i]/(1.0f + 50.0f*track[i]);

@@ -60,7 +60,7 @@ namespace xshazwar.noize.geologic {
         public float magnitude = 0.5f;
 
         const int PARTICLE_COUNT = 1; // maybe leave some overhead threads for other jobs to run during erosion? Remeshing comes to mind
-        const int EVENT_LIMIT = 250; // event limit per particle before intermediate results are calculated. Should align to a frame or second or something...?
+        const int EVENT_LIMIT = 25; // event limit per particle before intermediate results are calculated. Should align to a frame or second or something...?
         const int Cycles = 1;
 
         private Mesh waterMesh;
@@ -354,7 +354,7 @@ namespace xshazwar.noize.geologic {
             JobHandle cycle = default;
             for (int i = 0; i < Cycles; i++){
                 cycle = ErosionCycleSingleThreadJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, particles, events, EVENT_LIMIT, generatorResolution, handle);
-                handle = UpdateFlowFromTrackJob.Schedule(streamMap, particleTrack, generatorResolution, cycle);
+                handle = UpdateFlowFromTrackJob.Schedule(poolMap, streamMap, particleTrack, generatorResolution, cycle);
             }
             Debug.LogWarning("Cycle started");
             erosionJobCtl.TrackJob(handle);

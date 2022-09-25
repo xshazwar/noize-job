@@ -513,6 +513,7 @@ namespace xshazwar.noize.geologic {
         }
 
         public static JobHandle Schedule(
+            NativeArray<float> pool,
             NativeArray<float> flow,
             NativeArray<float> track,
             int res,
@@ -521,6 +522,7 @@ namespace xshazwar.noize.geologic {
             var job = new UpdateFlowFromTrackJob(){
                 res = res,
                 tile = new WorldTile {
+                    pool = pool,
                     flow = flow,
                     track = track,
                     res = new int2(res, res)
@@ -595,7 +597,7 @@ namespace xshazwar.noize.geologic {
             int res,
             JobHandle deps
         ){
-            JobHandle writeFlowMap = UpdateFlowFromTrackJob.Schedule(flow, track, res, deps);
+            JobHandle writeFlowMap = UpdateFlowFromTrackJob.Schedule(pool, flow, track, res, deps);
             JobHandle updatePoolsJob = UpdatePoolValues.ScheduleRun(poolUpdates, pools, deps);
             JobHandle writePoolMap = DrawPoolsJob.Schedule(
                 new NativeSlice<float>(pool),
