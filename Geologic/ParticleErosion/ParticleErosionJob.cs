@@ -457,6 +457,52 @@ namespace xshazwar.noize.geologic {
     }
 
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+    public struct ErosionCycleBeyerParticleJob: IJob {
+        FlowMaster fm;
+        NativeArray<BeyerParticle> particles;
+        int RND_SEED;
+        int MAX_STEPS;
+
+        public void Execute(){
+            BeyerParticle p = particles[0];
+            fm.ServiceBeyerParticle(ref p, RND_SEED, MAX_STEPS);
+            particles[0] = p;
+        }
+
+        public static JobHandle ScheduleRun(
+            NativeArray<float> height,
+            NativeArray<float> pool,
+            NativeArray<float> flow,
+            NativeArray<float> track,
+            NativeArray<BeyerParticle> particles,
+            NativeQueue<ErosiveEvent> events,
+            int eventLimit,
+            int res,
+            JobHandle deps
+        ){
+            int seed = UnityEngine.Random.Range(0, Int32.MaxValue);
+            var job = new ErosionCycleBeyerParticleJob {
+                fm = new FlowMaster {
+                    tile = new WorldTile {
+                        res = new int2(res, res),
+                        height = height,
+                        pool = pool,
+                        flow = flow,
+                        track = track
+                    },
+                    events = events,
+                    eventWriter = events.AsParallelWriter()
+                },
+                particles = particles,
+                RND_SEED = seed,
+                MAX_STEPS = eventLimit
+            };
+            return job.Schedule(deps);
+        }
+    }
+
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
     public struct ErosionCycleSingleThreadJob: IJob {
         FlowMaster fm;
         NativeArray<Particle> particles;

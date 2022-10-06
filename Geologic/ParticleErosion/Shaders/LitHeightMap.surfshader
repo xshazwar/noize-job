@@ -87,7 +87,7 @@ BEGIN_CODE
 	void SurfaceFunction(inout Surface o, ShaderData d){
    #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
          // o.Albedo = 1 - (half3(0, 0,.5) * GetSceneColor(d.screenUV));
-         o.Albedo = half3(0, 0.5, 0);
+         o.Albedo = half3(1, 1, 1);
          o.Alpha = .2;
       #else
          o.Albedo = half3(1, 0,1);

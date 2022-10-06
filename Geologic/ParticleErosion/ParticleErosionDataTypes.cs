@@ -250,26 +250,196 @@ namespace xshazwar.noize.geologic {
         }
     }
 
+    public struct BeyerParticle : IEquatable<BeyerParticle> {
+        public float2 pos;
+        public float2 dir; // norm
+        public float vel;
+        public float water;
+        public float sediment;
+        public bool isDead;
+
+        // tuning constants
+        static readonly float INERTIA = 0.8f;
+        static readonly float GRAVITY = 1f;
+        static readonly float FRICTION = 2f;
+        // static readonly float EVAP = .001f;
+        static readonly float EVAP = .0000000001f;
+        static readonly float EROSION = 0.02f;
+        static readonly float DEPOSITION = 0.2f;
+        static readonly float MINSLOPE = 0.0000001f;
+        static readonly float CAPACITY = 2f;
+        static readonly int MAXSTEPS = 64;
+        // end tuning
+        static readonly float2 res = new float2(3000f / 256f, 3000f/ 256f);
+
+        static readonly float2 left = new float2(-1, 0);
+        static readonly float2 right = new float2(1, 0);
+        static readonly float2 up = new float2(0, 1);
+        static readonly float2 down = new float2(0, -1);
+        private static readonly float2 ZERO2 = new float2(0);
+        private static readonly bool2 TRUE2 = new bool2(true);
+
+        // gauss sigma 1
+        static readonly int KERNELSIZE = 3;
+        static readonly float[] KERNEL = new float[] {0.10376260474744907f, 0.17107561355036938f, 0.10376260474744907f};
+        // static readonly float[] KERNEL = new float[] { 0.274068619061197f, 0.45186276187760605f, 0.274068619061197f };
+        // static readonly float[] KERNEL = new float[] { 0.054488684549642945f, 0.24420134200323337f, 0.4026199468942475f, 0.24420134200323337f, 0.054488684549642945f };
+        // gauss sigma 1.5
+        // static readonly float[] KERNEL = new float[] { 0.30780132912347f, 0.38439734175306006f, 0.30780132912347f };
+        // static readonly float[] KERNEL = new float[] { 0.12007838424321349f, 0.23388075658535032f, 0.29208171834287244f, 0.23388075658535032f, 0.12007838424321349f };
+
+
+        public bool Equals(BeyerParticle other){
+            // TODO use lazy comparer for the floats
+            if (!(pos == other.pos).Equals(TRUE2)){
+                return false;
+            }
+            if (!(vel == other.vel)){
+                return false;
+            }
+            return (water == other.water && sediment == other.sediment);
+        }
+
+        public void Reset(int2 pos){
+            this.pos = new float2(pos);
+            this.dir = new float2(0f, 0f);
+            this.vel = 0f;
+            this.water = 1f;
+            this.sediment = 0f;
+            this.isDead = false;
+        }
+
+        public void DepositSediment(ref WorldTile tile, float2 posD, float val){
+            float factor = val > 0f ? DEPOSITION : EROSION;
+            float offset = floor((float) KERNELSIZE / 2f);
+            int idx = 0;
+            float kernelFactor = 1f;
+            float2 probe = new float2(0);
+            for (int x = 0; x < KERNELSIZE; x++){
+                for( int z = 0; z < KERNELSIZE; z++){
+                    // TODO generalize for other kernels?
+                    kernelFactor = x == 1 && z == 1 ? 0.15f : 0.85f / 8f;
+                    probe.x = posD.x - offset + (float) x;
+                    probe.y = posD.y - offset + (float) z;
+                    idx = tile.SafeIdx(probe);
+                    float last = tile.height[idx];
+                    float newDiff =  ((factor * val * kernelFactor) / WorldTile.HEIGHT);
+                    // Debug.Log($"old: {last} new: {last + newDiff}: {factor}, {val}, {kernelFactor}");
+                    tile.height[idx] = last + newDiff;
+                }
+            }
+        }
+
+        public float2 nextPos(ref WorldTile tile) {
+            float h = tile.WIH(pos);
+            
+            float3 a = cross(new float3(0, h - tile.WIH(pos + up), res.y), new float3(res.x, h - tile.WIH(pos + right), 0));
+            float3 b = cross(new float3(0, h - tile.WIH(pos + down), -res.y), new float3(-res.x, h - tile.WIH(pos + left), 0));
+            float3 norm = new float3(a.x + b.x, a.y + b.y, a.z + b.z);
+            float2 g = new float2(norm.x, norm.z);
+            float3 _norm = normalize(norm);
+            float2 gnorm = normalize(g);
+            dir = normalize((dir * (INERTIA * _norm.y / 1)) + (gnorm * ( 1f - (INERTIA * _norm.y / 1))));
+            
+            // dir = normalize(dir * (INERTIA) + gnorm * ( 1f - INERTIA));
+
+            // dir = normalize(lerp(g, dir, (INERTIA * (1 - .125f * tile.flow[idx]))));
+            // dir = normalize(lerp(g, dir, (INERTIA * (1 - tile.flow[idx]))));
+
+            // if(length(g) > .1){
+            //     float2 gnorm = normalize(g);
+            //     dir = normalize(dir * (INERTIA) + gnorm * ( 1f - INERTIA));
+            //     // dir = normalize(lerp(g, dir, (INERTIA * (1 - .125f * tile.flow[idx]))));
+            // }
+            // return round(pos + dir);
+            return pos + dir;
+        }
+
+        public void DoDescent(ref WorldTile tile){
+            int steps = 0;
+            while(steps < MAXSTEPS && Descend(ref tile)){
+                steps += 1;
+            }
+        }
+
+        public void UpdateTrack(ref WorldTile tile){
+            int idx = tile.getIdx(pos);
+            float trackVolume = tile.track[idx];
+            trackVolume += water;
+            tile.track[idx] = trackVolume;
+        }
+
+        public bool Descend(ref WorldTile tile){
+            float2 posN = nextPos(ref tile);
+            int idx = tile.getIdx(pos);
+            if (posN.Equals(pos)) { 
+                return false;
+            } // did not descend
+            if (tile.OutOfBounds(posN)) {
+                return false;
+            } // went OOB
+            UpdateTrack(ref tile);
+            float hDiff = tile.WIH(posN) - tile.WIH(pos);
+            float depositionAmount = 0f;
+            float currentCapacity = 0f;
+            int choice = 0;
+            float depoFactor = 0f;
+            // going uphill
+            // if(hDiff > 0 ) { // deposit sediment
+            //     depositionAmount = max(sediment, hDiff);// * DEPOSITION;
+            //     depoFactor = DEPOSITION;
+            // }else{
+                currentCapacity = max(-hDiff, MINSLOPE) * vel * water * CAPACITY;
+                if (sediment < currentCapacity){
+                    // erode
+                    choice = 1;
+                    depositionAmount = -1f * min((currentCapacity - sediment), -hDiff);
+                    depoFactor = EROSION;
+                }
+                else{
+                    choice = 2;
+                    depositionAmount = (sediment - currentCapacity);
+                    depoFactor = DEPOSITION;
+                }
+            // }
+            // Debug.Log($"{choice}:{depositionAmount} sed:{sediment} / cap: {currentCapacity} == {-hDiff} {MINSLOPE} {vel} {water} {CAPACITY}");
+            DepositSediment(ref tile, pos, depositionAmount);
+            float effectiveFriction = FRICTION * (1 - tile.flow[idx]);
+            sediment -= (min(depositionAmount, sediment) * depoFactor);
+            // sediment = max(sediment, 0f);
+            vel = sqrt(max(0f, vel * vel + (hDiff / WorldTile.HEIGHT) * GRAVITY * effectiveFriction));
+            // if(vel < .001f){
+            //     // Debug.Log("Too slow");
+            //     return false;
+            // }
+            water = water * (1 - EVAP);
+            pos = posN;
+            return true;
+        }
+
+    }
+
     public struct Particle : IEquatable<Particle> {
         
         // Parameters
         public static readonly float density = 1.0f;  //This gives varying amounts of inertia and stuff...
         // original
         // public static readonly float evapRate = 0.001f;
-        public static readonly float evapRate = 0.001f;
+        public static readonly float evapRate = 0.0001f;
         
-        // public static readonly float depositionRate = 1.2f*0.08f; // original
-        public static readonly float depositionRate = 0.5f*0.08f;
+        public static readonly float depositionRate = 1.2f*0.08f; // original
+        // public static readonly float depositionRate = 0.5f*0.08f;
         public static readonly float minVol = 0.01f;
         
         // public static readonly float friction = 0.25f; // original
         // public static readonly float friction = 0.025f;
         public static readonly float friction = 0.25f;
         // public static readonly float volumeFactor = 0.5f; // original
-        public static readonly float volumeFactor = 0.5f;
+        public static readonly float volumeFactor = 2f;
         private static readonly bool2 TRUE2 = new bool2(true, true);
 
-        public static readonly float MINIMUM_MOMENTUM = 1E-5f;
+        // public static readonly float MINIMUM_MOMENTUM = 1E-5f;
+        public static readonly float MINIMUM_MOMENTUM = 5E-4f;
         
         // Fields
         public int2 pos;
@@ -318,7 +488,8 @@ namespace xshazwar.noize.geologic {
             evt.deltaWaterTrack = volume;
             float3 norm = tile.Normal(pos);
             float2 horiz = new float2(norm.x, norm.z);
-            float effF = friction * (1f - tile.flow[idx]);
+            // float effF = friction * (1f - tile.flow[idx]);
+            float effF = friction * (1f - .05f * tile.flow[idx]);
             if(length(horiz *effF) < MINIMUM_MOMENTUM){
                 // Should this write to the pool map? Not sure how it wouldn't
                 Debug.Log($"new pool at {idx} ?");
@@ -368,6 +539,7 @@ namespace xshazwar.noize.geologic {
 
             float3 norm = tile.Normal(pos);
             float2 horiz = new float2(norm.x, norm.z);
+            // float effF = friction * (1f - tile.flow[idx]);
             float effF = friction * (1f - tile.flow[idx]);
             if(length(horiz *effF) < MINIMUM_MOMENTUM){
                 return true;
@@ -454,6 +626,8 @@ namespace xshazwar.noize.geologic {
 
     public struct WorldTile {
 
+        
+        public static readonly float HEIGHT = 3000f;
         static readonly float SCALE = 256f * (3000f / 4000f);
         // static readonly float SCALE = 80f;
         // static readonly float SCALE = 0.1f;
@@ -487,7 +661,8 @@ namespace xshazwar.noize.geologic {
         static public readonly int[] normY =  new int[] {-1, 0, 1,-1, 1,-1, 0, 1};
 
         // static public readonly float maxdiff = 0.01f;  // maximum diff under which no modification will be made in either direction
-        static public readonly float maxdiff = 0.00005f; 
+        // static public readonly float maxdiff = 0.00005f; 
+        static public readonly float maxdiff = 0.0005f; 
         // static public readonly float settling = 0.1f;
         static public readonly float settling = 0.1f;
         static readonly float lRate = 0.01f;
@@ -554,11 +729,17 @@ namespace xshazwar.noize.geologic {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float WIH(int idx){
-            return SCALE * (height[idx] + pool[idx]);
+            // return SCALE * (height[idx] + pool[idx]);
+            return HEIGHT * (height[idx] + pool[idx]);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float WIH(int2 pos){
+            return WIH(SafeIdx(pos));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float WIH(float2 pos){
             return WIH(SafeIdx(pos));
         }
 
@@ -601,6 +782,11 @@ namespace xshazwar.noize.geologic {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int SafeIdx(float2 pos){
+            return SafeIdx(new int2(pos));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int getIdx(int x, int z){
             // if(x >= res.x || z >= res.y || x < 0 || z < 0){
             //     return -1;
@@ -614,15 +800,26 @@ namespace xshazwar.noize.geologic {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int getIdx(float2 pos){
+            return getIdx(new int2(pos));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int2 getPos(int idx){
             // int x = idx / res.x;
             // int z = idx % res.x;
             return new int2((idx / res.x), (idx % res.x));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool OutOfBounds(int2 pos){
             if(pos.x < 0 || pos.y < 0 || pos.x >= res.x || pos.y >= res.y) return true;
             return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool OutOfBounds(float2 pos){
+            return OutOfBounds(new int2(pos));
         }
 
         public void UpdateFlowMapFromTrack(int x, int z){

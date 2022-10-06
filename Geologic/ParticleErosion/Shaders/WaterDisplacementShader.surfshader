@@ -96,7 +96,7 @@ BEGIN_CODE
    }
 
    float FloodedTerrainHeight(int x, int z){
-      return 2000 + (_WaterValues[Idx(x, z)] + _TerrainValues[Idx(x, z)]) * _Height;
+      return (_WaterValues[Idx(x, z)] + _TerrainValues[Idx(x, z)]) * _Height;
    }
 
    float VertexHeight(int x, int z){
@@ -108,7 +108,7 @@ BEGIN_CODE
       float minDryNeighborHeight = 1e+10f;
       float terrainHeight = _TerrainValues[Idx(x, z)];
       AreaWater(x, z, neighborsWater, maxNeigborTH, minDryNeighborHeight);
-      return neighborsWater && (maxNeigborTH < terrainHeight) && (minDryNeighborHeight > maxNeigborTH) ? 2000 + maxNeigborTH * _Height : sqrt(-1);
+      return neighborsWater && (maxNeigborTH < terrainHeight) && (minDryNeighborHeight > maxNeigborTH) ? maxNeigborTH * _Height : sqrt(-1);
    }
 
    void ApplyNormal(inout VertexData v, in float x, in float z){
@@ -185,8 +185,9 @@ BEGIN_CODE
    {
       #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
          // o.Albedo = 1 - (half3(0, 0,.5) * GetSceneColor(d.screenUV));
-         o.Albedo = half3(0, 0,.5);
-         o.Alpha = .2;
+         // o.Albedo = half3(0, 0,.5);
+         o.Albedo = half3(0, 0, 0);
+         o.Alpha = .8;
          o.Emission = ColorBelowWater(d.screenPos, o.Normal) * (1 - o.Alpha);
       #else
          half4 c = SAMPLE_TEXTURE2D(_Albedo, sampler_Albedo, d.texcoord0.xy);

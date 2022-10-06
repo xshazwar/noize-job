@@ -1146,6 +1146,21 @@ namespace xshazwar.noize.geologic {
                 partCount++;
             }
         }
+
+        // Single Beyer
+
+        public void ServiceBeyerParticle(ref BeyerParticle p, int seed, int maxParticles){
+            random = new Unity.Mathematics.Random((uint) seed);
+            if(p.isDead){
+                p.Reset(RandomPos());
+            }
+            int partCount = 0;
+            while(partCount < maxParticles){
+                p.DoDescent(ref tile);
+                p.Reset(RandomPos());
+                partCount++;
+            }
+        }
         
 
 

@@ -56,7 +56,7 @@ namespace xshazwar.noize.filter.blur {
             return new List<float[]>() {kernels[sigma][idx], kernels[sigma][idx]};
 
         }
-        static Dictionary<GaussSigma, List<float[]>> kernels = new Dictionary<GaussSigma, List<float[]>>() {
+        static readonly Dictionary<GaussSigma, List<float[]>> kernels = new Dictionary<GaussSigma, List<float[]>>() {
             {
                 GaussSigma.s0d50, new List<float[]>() {
                     new float[] { 0.10650697891920075f, 0.7869860421615984f, 0.10650697891920075f },

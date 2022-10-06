@@ -194,7 +194,7 @@ namespace xshazwar.noize.scripts {
             rb.isKinematic = true;
             go.AddComponent<LivePoolDebugger>();
             poolDrawer.SetFromTileGenerator(
-                activeTiles[data.uuid], this
+                activeTiles[data.uuid], this, data.mesh
             );
             string key = pos.ToString();
             children[key] = go;
