@@ -9,22 +9,34 @@ namespace xshazwar.noize.editor {
     public class PoolDrawerEditor : Editor
     {
         SerializedProperty tex2d;
-        SerializedProperty run;
+        SerializedProperty updateContinuous;
+        SerializedProperty updateSingle;
         SerializedProperty mag;
+        SerializedProperty talusAngle;
+        SerializedProperty thermalStepSize;
+        SerializedProperty thermalErosion;
         Texture2D texture;
 
         void OnEnable(){
             tex2d = serializedObject.FindProperty("texture");
-            run = serializedObject.FindProperty("updateWater");
+            updateContinuous = serializedObject.FindProperty("updateContinuous");
+            updateSingle = serializedObject.FindProperty("updateSingle");
             mag = serializedObject.FindProperty("magnitude");
+            talusAngle = serializedObject.FindProperty("talusAngle");
+            thermalStepSize = serializedObject.FindProperty("thermalStepSize");
+            thermalErosion = serializedObject.FindProperty("thermalErosion");
             texture = tex2d.objectReferenceValue as Texture2D;
         }
 
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
+            EditorGUILayout.PropertyField(thermalErosion);
+            EditorGUILayout.PropertyField(talusAngle);
+            EditorGUILayout.PropertyField(thermalStepSize);
             EditorGUILayout.PropertyField(mag);
-            EditorGUILayout.PropertyField(run);
+            EditorGUILayout.PropertyField(updateContinuous);
+            EditorGUILayout.PropertyField(updateSingle);
             // this is cheesy but it works
             // sticking the texture into a label didn't
             Rect space = EditorGUILayout.BeginHorizontal();

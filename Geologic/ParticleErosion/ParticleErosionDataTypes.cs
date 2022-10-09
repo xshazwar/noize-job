@@ -259,15 +259,15 @@ namespace xshazwar.noize.geologic {
         public bool isDead;
 
         // tuning constants
-        static readonly float INERTIA = 0.8f;
+        static readonly float INERTIA = 0.5f;
         static readonly float GRAVITY = 1f;
-        static readonly float FRICTION = 2f;
+        static readonly float FRICTION = .9f;
         // static readonly float EVAP = .001f;
-        static readonly float EVAP = .0000000001f;
-        static readonly float EROSION = 0.02f;
-        static readonly float DEPOSITION = 0.2f;
-        static readonly float MINSLOPE = 0.0000001f;
-        static readonly float CAPACITY = 2f;
+        static readonly float EVAP = .01f;
+        static readonly float EROSION = 0.5f;
+        static readonly float DEPOSITION = 0.1f;
+        static readonly float MINSLOPE = 0.01f;
+        static readonly float CAPACITY = 1f;
         static readonly int MAXSTEPS = 64;
         // end tuning
         static readonly float2 res = new float2(3000f / 256f, 3000f/ 256f);
@@ -309,37 +309,21 @@ namespace xshazwar.noize.geologic {
             this.isDead = false;
         }
 
-        public void DepositSediment(ref WorldTile tile, float2 posD, float val){
-            float factor = val > 0f ? DEPOSITION : EROSION;
-            float offset = floor((float) KERNELSIZE / 2f);
-            int idx = 0;
-            float kernelFactor = 1f;
-            float2 probe = new float2(0);
-            for (int x = 0; x < KERNELSIZE; x++){
-                for( int z = 0; z < KERNELSIZE; z++){
-                    // TODO generalize for other kernels?
-                    kernelFactor = x == 1 && z == 1 ? 0.15f : 0.85f / 8f;
-                    probe.x = posD.x - offset + (float) x;
-                    probe.y = posD.y - offset + (float) z;
-                    idx = tile.SafeIdx(probe);
-                    float last = tile.height[idx];
-                    float newDiff =  ((factor * val * kernelFactor) / WorldTile.HEIGHT);
-                    // Debug.Log($"old: {last} new: {last + newDiff}: {factor}, {val}, {kernelFactor}");
-                    tile.height[idx] = last + newDiff;
-                }
-            }
-        }
-
         public float2 nextPos(ref WorldTile tile) {
             float h = tile.WIH(pos);
             
             float3 a = cross(new float3(0, h - tile.WIH(pos + up), res.y), new float3(res.x, h - tile.WIH(pos + right), 0));
             float3 b = cross(new float3(0, h - tile.WIH(pos + down), -res.y), new float3(-res.x, h - tile.WIH(pos + left), 0));
             float3 norm = new float3(a.x + b.x, a.y + b.y, a.z + b.z);
-            float2 g = new float2(norm.x, norm.z);
+            float2 g = new float2(-norm.x, -norm.z);
             float3 _norm = normalize(norm);
             float2 gnorm = normalize(g);
-            dir = normalize((dir * (INERTIA * _norm.y / 1)) + (gnorm * ( 1f - (INERTIA * _norm.y / 1))));
+            if(vel > 0.001f){
+                dir = normalize((dir * (INERTIA * _norm.y / 1)) + (gnorm * ( 1f - (INERTIA * _norm.y / 1))));
+            }else{
+                dir = gnorm;
+            }
+            
             
             // dir = normalize(dir * (INERTIA) + gnorm * ( 1f - INERTIA));
 
@@ -379,35 +363,46 @@ namespace xshazwar.noize.geologic {
                 return false;
             } // went OOB
             UpdateTrack(ref tile);
-            float hDiff = tile.WIH(posN) - tile.WIH(pos);
+            float currentHeight = tile.WIH(pos);
+            float hDiff = tile.WIH(posN) - tile.WIH(pos); // in world Meters
+            float vDiff = abs(hDiff);
             float depositionAmount = 0f;
             float currentCapacity = 0f;
             int choice = 0;
             float depoFactor = 0f;
             // going uphill
-            // if(hDiff > 0 ) { // deposit sediment
-            //     depositionAmount = max(sediment, hDiff);// * DEPOSITION;
-            //     depoFactor = DEPOSITION;
-            // }else{
-                currentCapacity = max(-hDiff, MINSLOPE) * vel * water * CAPACITY;
+            if(hDiff > 0 ) {
+                // deposit sediment
+                depositionAmount = min((DEPOSITION * sediment), 0.1f * vDiff);
+                if(depositionAmount < 0f) Debug.LogError("eroding on deposit?");
+            }else{ // downhill
+                currentCapacity = max(vDiff, MINSLOPE) * vel * water * CAPACITY;
                 if (sediment < currentCapacity){
                     // erode
-                    choice = 1;
-                    depositionAmount = -1f * min((currentCapacity - sediment), -hDiff);
-                    depoFactor = EROSION;
+                    depositionAmount = -1f * max(EROSION * (currentCapacity - sediment), vDiff);
+                    if(depositionAmount >= 0f) Debug.LogError("depositing on erosion?");
                 }
                 else{
-                    choice = 2;
-                    depositionAmount = (sediment - currentCapacity);
-                    depoFactor = DEPOSITION;
+                    // deposit
+                    depositionAmount = (DEPOSITION * (sediment - currentCapacity));
+                    if(depositionAmount < 0f) Debug.LogError("eroding on deposit?");
                 }
+            }
+            // if(hDiff > 0){
+            //    Debug.Log($"UH| {currentHeight} v: {pos.x},{pos.y}>>{vel} diff: {hDiff}: dropping {depositionAmount} / sed:{sediment}"); 
+            // }else{
+            //     Debug.Log($"DH| {currentHeight} v: {pos.x},{pos.y}>>{vel} diff: {hDiff}: {depositionAmount} sed:{sediment} / cap: {currentCapacity}");
             // }
-            // Debug.Log($"{choice}:{depositionAmount} sed:{sediment} / cap: {currentCapacity} == {-hDiff} {MINSLOPE} {vel} {water} {CAPACITY}");
-            DepositSediment(ref tile, pos, depositionAmount);
+            if(depositionAmount > sediment){
+                Debug.LogError("bad deposition value");
+            }
+            if(abs(depositionAmount) > 0.05f){
+                float real = DepositSediment(ref tile, pos, depositionAmount);
+                sediment -= depositionAmount;
+            }
+
             float effectiveFriction = FRICTION * (1 - tile.flow[idx]);
-            sediment -= (min(depositionAmount, sediment) * depoFactor);
-            // sediment = max(sediment, 0f);
-            vel = sqrt(max(0f, vel * vel + (hDiff / WorldTile.HEIGHT) * GRAVITY * effectiveFriction));
+            vel = min(sqrt(max(0f, vel * vel + (-hDiff) * (GRAVITY - effectiveFriction))), 120f);
             // if(vel < .001f){
             //     // Debug.Log("Too slow");
             //     return false;
@@ -415,6 +410,33 @@ namespace xshazwar.noize.geologic {
             water = water * (1 - EVAP);
             pos = posN;
             return true;
+        }
+        public float DepositSediment(ref WorldTile tile, float2 posD, float val){
+            float amount = 0f;
+            // float factor = val > 0f ? DEPOSITION : EROSION;
+            float offset = floor((float) KERNELSIZE / 2f);
+            int idx = 0;
+            float kernelFactor = 1f;
+            float2 probe = new float2(0);
+            for (int x = 0; x < KERNELSIZE; x++){
+                for( int z = 0; z < KERNELSIZE; z++){
+                    // TODO generalize for other kernels?
+                    kernelFactor = x == 1 && z == 1 ? 0.25f : 0.75f / 8f;
+                    probe.x = posD.x - offset + (float) x;
+                    probe.y = posD.y - offset + (float) z;
+                    idx = tile.SafeIdx(probe);
+                    float last = tile.height[idx];
+                    // float newDiff =  ((factor * val * kernelFactor) / WorldTile.HEIGHT);
+                    float newDiff =  ((val * kernelFactor) / WorldTile.HEIGHT);
+                    // Debug.Log($"old: {last} new: {last + newDiff}: {factor}, {val}, {kernelFactor}");
+                    float nextV = last + newDiff;
+                    if(nextV > 1f){continue;} // bad build breaker
+                    if(nextV < 0f){continue;} // bad build breaker
+                    tile.height[idx] = last + newDiff;
+                    amount += newDiff;
+                }
+            }
+            return amount;
         }
 
     }

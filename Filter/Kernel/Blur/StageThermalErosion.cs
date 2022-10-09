@@ -16,14 +16,16 @@ namespace xshazwar.noize.filter.blur {
 
         [Range(1, 32)]
         public int iterations = 1;
-        public float talus = 0.2f;
+        [Range(1, 90)]
+        public int talus = 45;
         public float increment = 0.5f;
+        public float meshHeightWidthRatio = 0.75f;
 
 
         public override void Schedule(PipelineWorkItem requirements, JobHandle dependency ){
             CheckRequirements<GeneratorData>(requirements);
             GeneratorData d = (GeneratorData) requirements.data;
-            jobHandle = job(d.data, talus, increment, iterations, d.resolution, dependency);
+            jobHandle = job(d.data, (float)talus, increment, meshHeightWidthRatio, iterations, d.resolution, dependency);
         }
     }
 }

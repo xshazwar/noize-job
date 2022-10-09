@@ -64,11 +64,15 @@ namespace xshazwar.noize.geologic {
 
         public bool paramsReady = false;
         public bool ready = false;
-        public bool updateWater = false;
+        public bool updateContinuous = false;
+        public bool updateSingle = false;
         public float magnitude = 0.5f;
+        public bool thermalErosion = true;
+        public float talusAngle = 45f;
+        public float thermalStepSize = 0.1f;
 
         const int PARTICLE_COUNT = 1; // maybe leave some overhead threads for other jobs to run during erosion? Remeshing comes to mind
-        const int EVENT_LIMIT = 10000; // event limit per particle before intermediate results are calculated. Should align to a frame or second or something...?
+        const int EVENT_LIMIT = 1000; // event limit per particle before intermediate results are calculated. Should align to a frame or second or something...?
         const int Cycles = 3;
         private Mesh landMesh;
         private Mesh.MeshDataArray meshDataArray;
@@ -282,16 +286,17 @@ namespace xshazwar.noize.geologic {
                 #if UNITY_EDITOR
                 ApplyTexture();
                 #endif
-            }else if(updateWater && !erosionJobCtl.isRunning){
+            }else if((updateContinuous || updateSingle) && !erosionJobCtl.isRunning){
+                updateSingle = false;
                 // GenerateJunk();
                 // ScheduleJob();
                 // TriggerCycle();
                 // TriggerCycleSingleThread();
                 TriggerCycleBeyer();
-                // updateWater = false;
+                // updateContinuous = false;
             }
-            // else if(updateWater){
-            //     updateWater = false;
+            // else if(updateContinuous){
+            //     updateContinuous = false;
             //     Debug.LogError("job still running??");
             // }
             DrawWater();
@@ -304,7 +309,7 @@ namespace xshazwar.noize.geologic {
                     volume = volume
                 }
             );
-            updateWater = true;
+            updateContinuous = true;
         }
 
         public int GetAssociatedMinima(Vector2Int pos){
@@ -419,10 +424,13 @@ namespace xshazwar.noize.geologic {
             for (int i = 0; i < Cycles; i++){
                 cycle = ErosionCycleBeyerParticleJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, beyerParticles, events, EVENT_LIMIT, generatorResolution, handle);
                 handle = UpdateFlowFromTrackJob.Schedule(poolMap, streamMap, particleTrack, generatorResolution, cycle);
+                if(thermalErosion){
+                    handle = ThermalErosionFilter.Schedule(new NativeSlice<float>(heightMap), talusAngle, thermalStepSize, 0.75f, 1, generatorResolution, handle);
+                }
                 // handle = ThermalErosionFilter.Schedule(new NativeSlice<float>(heightMap), .001f, 0.25f, 4, generatorResolution, handle);
             }
-            handle = ThermalErosionFilter.Schedule(new NativeSlice<float>(heightMap), .001f, 0.1f, 2, generatorResolution, handle);
-            // handle = GaussFilter.Schedule(new NativeSlice<float>(heightMap), new NativeSlice<float>(tmp), 15, GaussSigma.s1d50, generatorResolution, handle);
+            // handle = ThermalErosionFilter.Schedule(new NativeSlice<float>(heightMap), 30f, 0.5f, .75f, 4, generatorResolution, handle);
+            handle = GaussFilter.Schedule(new NativeSlice<float>(heightMap), new NativeSlice<float>(tmp), 3, GaussSigma.s0d50, generatorResolution, handle);
             handle = ScheduleMeshUpdate(handle);
             Debug.LogWarning("Cycle started");
             erosionJobCtl.TrackJob(handle);

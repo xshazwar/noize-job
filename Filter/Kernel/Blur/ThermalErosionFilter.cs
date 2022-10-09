@@ -26,8 +26,10 @@ namespace xshazwar.noize.filter.blur {
         NativeSlice<float> data;
         int flip;
         float talus;
+        float heightRatio;
         float increment;
         int resolution;
+        float f_resolution;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int getIdx(int x, int z){
@@ -50,10 +52,13 @@ namespace xshazwar.noize.filter.blur {
             float va = data[idxA];
             float vb = data[idxB];
             float diff = abs(va - vb);
-            float angle = asin(diff);
-            
+            // float angle = asin((diff / (1f/(float)resolution)) * heightRatio);  // opposite / adjacent >> can take into account tile scale in talus
+            float angle = atan(diff / (1f / f_resolution));
+            float asdeg = angle * 180 / 3.14159f;
+            // Debug.Log($"{asdeg} {angle / talus}");
+
             if(angle > talus){
-                float excess = angle - talus;
+                float excess = tan((angle - talus)) / f_resolution;
                 if(va > vb){
                     vb += increment * excess;
                     va -= increment * excess;
@@ -75,8 +80,9 @@ namespace xshazwar.noize.filter.blur {
         }
         public static JobHandle Schedule (
 			NativeSlice<float> src,
-            float talus,
+            float talus, // degrees
             float incrementRatio,
+            float meshHeightWidthRatio,
             int iterations,
             int resolution,
             JobHandle dep
@@ -86,8 +92,10 @@ namespace xshazwar.noize.filter.blur {
             var job = new ThermalErosionFilter();
             job.data = src;
             job.resolution = resolution;
+            job.f_resolution = (float) resolution;
             job.increment = incrementRatio;
-            job.talus = talus;
+            job.heightRatio = meshHeightWidthRatio;
+            job.talus = (talus / 90f) * 3.14159f/2f;
             for (int i = 0; i < iterations; i++){
                 for(int flipflop = 0; flipflop <= 1; flipflop++){
                     job.flip = flipflop;
@@ -106,6 +114,7 @@ namespace xshazwar.noize.filter.blur {
 			NativeSlice<float> src,
             float talus,
             float incrementRatio,
+            float meshHeightWidthRatio,
             int iterations,
             int resolution,
             JobHandle dependency
