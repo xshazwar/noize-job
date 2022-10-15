@@ -368,8 +368,6 @@ namespace xshazwar.noize.geologic {
             float vDiff = abs(hDiff);
             float depositionAmount = 0f;
             float currentCapacity = 0f;
-            int choice = 0;
-            float depoFactor = 0f;
             // going uphill
             if(hDiff > 0 ) {
                 // deposit sediment

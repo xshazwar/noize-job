@@ -175,11 +175,14 @@ namespace xshazwar.noize.geologic {
         }
 
         private bool CheckPools(){
+            if (!drawer.poolsReady){
+                poolsReady = false;
+                return false;
+            }
             if (poolsReady) return true;
             // poolsReady = drawer.stateManager.BufferExists<NativeParallelHashMap<PoolKey, Pool>>(drawer.getBufferName("PARTERO_POOLS")) &&
             //     !drawer.stateManager.IsLocked<NativeParallelHashMap<PoolKey, Pool>>(drawer.getBufferName("PARTERO_POOLS"));
             // Debug.Log(poolsReady);
-            if (!drawer.ready) return false;
             poolsReady = drawer.ready;
             boundIter = drawer.boundary_BM.GetEnumerator();
             return poolsReady;

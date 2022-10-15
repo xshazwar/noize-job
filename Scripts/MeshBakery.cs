@@ -24,8 +24,8 @@ namespace xshazwar.noize.scripts {
         
         private ConcurrentQueue<MeshBakeOrder> workQueue;
         private List<MeshBakeOrder> inProgress;
+        private HashSet<string> activeOrders;
         static BakeManyJobDelegate job = BakeManyJob.ScheduleParallel;
-        
         public int maxBatch = 2;
         private NativeArray<int> meshes;
         private bool isRunning;
@@ -38,6 +38,7 @@ namespace xshazwar.noize.scripts {
             isRunning = false;
             workQueue = new ConcurrentQueue<MeshBakeOrder>();
             inProgress = new List<MeshBakeOrder>();
+            activeOrders = new HashSet<string>();
         }
 
         public void Destroy(){
@@ -60,6 +61,11 @@ namespace xshazwar.noize.scripts {
         }
 
         public void Enqueue(MeshBakeOrder order){
+            if(activeOrders.Contains(order.uuid)){
+                // duplicated baking requests crash unity so we ignore them
+                return;
+            }
+            activeOrders.Add(order.uuid);
             workQueue.Enqueue(order);
         }
 
@@ -91,6 +97,7 @@ namespace xshazwar.noize.scripts {
         public void JobFinished(){
             foreach(MeshBakeOrder o in inProgress){
                 o.onCompleteBake.Invoke(o.uuid);
+                activeOrders.Remove(o.uuid);
             }
             meshes.Dispose();
             meshes = default;

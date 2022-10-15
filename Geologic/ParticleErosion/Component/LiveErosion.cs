@@ -24,12 +24,11 @@ using xshazwar.noize.mesh.Streams;
 namespace xshazwar.noize.geologic {
 
     
-    [AddComponentMenu("Noize/PoolDrawer", 0)]
-    public class PoolDrawer : MonoBehaviour {
+    [AddComponentMenu("Noize/LiveErosion", 0)]
+    public class LiveErosion : MonoBehaviour {
+        
+        // Tile Data
         private TileRequest tileData;
-        private BasePipeline poolGenerator;
-        // private BasePipeline poolSolver;
-        private MeshBakery bakery;
         public int tileHeight {get; private set;}
         public int tileSize {get; private set;}
         public int generatorResolution {get; private set;}
@@ -39,54 +38,58 @@ namespace xshazwar.noize.geologic {
             get { return (int) (generatorResolution - meshResolution) / 2 ; }
             private set {}
         }
-        private Material poolMaterial;
-        private Material streamMaterial;
-        private MaterialPropertyBlock poolMatProps;
-        private MaterialPropertyBlock streamMatProps;
+
+        //    State and Job Control
+        
         public StandAloneJobHandler erosionJobCtl;
         public PipelineStateManager stateManager;
 
+        // Data
+        
         private NativeArray<float> debugViz;
         private NativeArray<float> tmp;
         public NativeArray<float> poolMap {get; private set;}
         public NativeArray<float> streamMap {get; private set;}
         public NativeArray<float> particleTrack;
         public NativeArray<float> heightMap {get; private set;}
-
-        private NativeArray<Particle> particles;
         private NativeArray<BeyerParticle> beyerParticles;
         private NativeQueue<ErosiveEvent> events;
-        public NativeQueue<PoolUpdate> poolUpdates;
-        private NativeParallelMultiHashMap<PoolKey, int> drainToMinima;
-        public NativeParallelHashMap<int, int> catchment {get; private set;}
-        public NativeParallelHashMap<PoolKey, Pool> pools {get; private set;}
-        public NativeParallelMultiHashMap<int, int> boundary_BM {get; private set;}
-        private PoolSolver poolSolver;
+        
+        // Ready Flags
         public bool paramsReady = false;
         public bool ready = false;
-        public bool poolsReady = false;
         public bool updateContinuous = false;
         public bool updateSingle = false;
-        public float magnitude = 0.5f;
+        
+        // Erosion Control
+
         public bool thermalErosion = true;
         public float talusAngle = 45f;
         public float thermalStepSize = 0.1f;
+        public int thermalCyclesPerCycle = 1;
 
         const int PARTICLE_COUNT = 1; // maybe leave some overhead threads for other jobs to run during erosion? Remeshing comes to mind
-        const int EVENT_LIMIT = 1000; // event limit per particle before intermediate results are calculated. Should align to a frame or second or something...?
-        const int Cycles = 3;
+        public int EVENT_LIMIT = 10000; // event limit per particle before intermediate results are calculated. Should align to a frame or second or something...?
+        public int Cycles = 10;
+
+        // Meshing
+        private MeshBakery bakery;
         private Mesh landMesh;
         private Mesh.MeshDataArray meshDataArray;
         private Mesh.MeshData meshData;
         private Mesh waterMesh;
+
+         // Instanced Drawing
+        private Material poolMaterial;
+        private Material streamMaterial;
+        private MaterialPropertyBlock poolMatProps;
+        private MaterialPropertyBlock streamMatProps;
         private ComputeBuffer poolBuffer;
         private ComputeBuffer streamBuffer;
         private ComputeBuffer heightBuffer;
         private ComputeBuffer argsBuffer;
         private uint[] args = new uint[5] { 0, 0, 0, 0, 0 };
         private Bounds bounds;
-        UpdatePoolValues updateJob;
-        DrawPoolsJob drawJob;
 
     #if UNITY_EDITOR
         private enum CHANNEL
@@ -104,13 +107,8 @@ namespace xshazwar.noize.geologic {
         }
 
         void ApplyTexture(){
-            Debug.Log($"apply to texture -> {texture.height}, {texture.width}");
             foreach (CHANNEL c in new CHANNEL[] {CHANNEL.G, CHANNEL.B, CHANNEL.R}){ //, CHANNEL.R
-                // if (c == inputChannel){continue;};
                 NativeSlice<float> CS = new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>((int) c);
-                // CS.CopyFrom(new NativeSlice<float>(poolMap));
-                // CS.CopyFrom(new NativeSlice<float>(debugViz));
-                // CS.CopyFrom(new NativeSlice<float>(particleTrack));
                 CS.CopyFrom(new NativeSlice<float>(streamMap));
             }
             texture.Apply();
@@ -137,9 +135,7 @@ namespace xshazwar.noize.geologic {
             this.poolMaterial = generator.poolMaterial;
             this.streamMaterial = generator.streamMaterial;
             this.landMesh = landMesh;
-            Debug.Log($"creating solver @ gen resolution {generatorResolution}");
-            poolSolver = new PoolSolver(tileData.pos.x * meshResolution, tileData.pos.y * meshResolution, generatorResolution, stateManager);
-            Debug.Log($"{request.uuid} has a pool drawer");
+            Debug.Log($"{request.uuid} has LiveErosion");
             paramsReady = true;
 
         }
@@ -148,28 +144,13 @@ namespace xshazwar.noize.geologic {
             bool[] notReady = new bool[] {
                 !stateManager.BufferExists<NativeArray<float>>(getBufferName("TERRAIN_HEIGHT")),
                 stateManager.IsLocked<NativeArray<float>>(getBufferName("TERRAIN_HEIGHT")),
-
-                // !stateManager.BufferExists<NativeParallelHashMap<int, int>>(getBufferName("PARTERO_CATCHMENT")),
-                // stateManager.IsLocked<NativeParallelHashMap<int, int>>(getBufferName("PARTERO_CATCHMENT")),
-                // !stateManager.BufferExists<NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS")),
-                // stateManager.IsLocked<NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS")),
-                // !stateManager.BufferExists<NativeParallelMultiHashMap<int, int>>(getBufferName("PARTERO_BOUNDARY_BM")),
-                // stateManager.IsLocked<NativeParallelMultiHashMap<int, int>>(getBufferName("PARTERO_BOUNDARY_BM"))
             };
             if(notReady.Contains<bool>(true)){
-                Debug.Log($"PoolDrawerNotready! :  {String.Join(", ", notReady)}");
+                Debug.Log($"LiveErosion! :  {String.Join(", ", notReady)}");
                 return false;
             }
             Debug.Log("PoolDrawer Depends ok!");
             return true;
-        }
-
-        public void GetPoolBuffers(){
-            pools = stateManager.GetBuffer<PoolKey, Pool, NativeParallelHashMap<PoolKey, Pool>>(getBufferName("PARTERO_POOLS"));
-            catchment = stateManager.GetBuffer<int, int, NativeParallelHashMap<int, int>>(getBufferName("PARTERO_CATCHMENT"));
-            boundary_BM = stateManager.GetBuffer<int, int, NativeParallelMultiHashMap<int, int>>(getBufferName("PARTERO_BOUNDARY_BM"));
-            drainToMinima = stateManager.GetBuffer<PoolKey, int, NativeParallelMultiHashMap<PoolKey, int>>(getBufferName("PARTERO_DRAIN_TO_MINIMA"));
-            poolsReady = true;
         }
 
         public void Setup(){
@@ -186,13 +167,10 @@ namespace xshazwar.noize.geologic {
             // precalculated buffers
             heightMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT"));
             // allocated by poolSolver
-            
-
-            particles = stateManager.GetBuffer<Particle, NativeArray<Particle>>(getBufferName("PARTERO_PARTICLE_AGENT"), PARTICLE_COUNT, NativeArrayOptions.ClearMemory);
+        
             beyerParticles = stateManager.GetBuffer<BeyerParticle, NativeArray<BeyerParticle>>(getBufferName("PARTERO_PARTICLEBEYER_AGENT"), PARTICLE_COUNT, NativeArrayOptions.ClearMemory);
 
-            events = stateManager.GetBuffer<ErosiveEvent, NativeQueue<ErosiveEvent>>(getBufferName("PARTERO_EVT_EROSIVE"), 10);  // queue size is unrestricted, but we limit this in the job
-            poolUpdates = stateManager.GetBuffer<PoolUpdate, NativeQueue<PoolUpdate>>(getBufferName("PARTERO_EVT_POOL"), 10);
+            events = stateManager.GetBuffer<ErosiveEvent, NativeQueue<ErosiveEvent>>(getBufferName("PARTERO_EVT_EROSIVE"), 10);  // queue size is unrestricted, but we limit this in the job            
             particleTrack = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_PARTICLE_TRACK"), generatorResolution * generatorResolution, NativeArrayOptions.ClearMemory);
             streamMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_STREAM"), generatorResolution * generatorResolution, NativeArrayOptions.ClearMemory);
             poolMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_POOL"), generatorResolution * generatorResolution, NativeArrayOptions.ClearMemory); // doesn't need clear
@@ -218,15 +196,9 @@ namespace xshazwar.noize.geologic {
             streamMatProps.SetFloat("_Mesh_Res", meshResolution * 1.0f);
             streamMatProps.SetFloat("_Data_Res", generatorResolution * 1.0f);
 
-            // waterMatrix = new Matrix4x4[] {
-            //     Matrix4x4.TRS( transform.position + new Vector3( 0.5f * tileSize, 0f,  0.5f * tileSize), Quaternion.identity, 400 * Vector3.one )
-            // };
             bounds = new Bounds(transform.position, new Vector3(10000, 10000, 10000));
             waterMesh = MeshHelper.SquarePlanarMesh(meshResolution, tileHeight, tileSize);
-            for(int i = 0; i < particles.Length; i++){
-                Particle p = particles[i];
-                p.isDead = true;
-                particles[i] = p;
+            for(int i = 0; i < beyerParticles.Length; i++){
                 BeyerParticle bp = beyerParticles[i];
                 bp.isDead = true;
                 beyerParticles[i] = bp;
@@ -239,7 +211,7 @@ namespace xshazwar.noize.geologic {
             #endif
             ready = true;
             ApplyTexture();
-            Debug.Log("PoolDrawer Ready!");
+            Debug.Log("LiveErosion Ready!");
         }
         
         void Awake(){
@@ -291,8 +263,6 @@ namespace xshazwar.noize.geologic {
             }else if(erosionJobCtl.JobComplete()){
                 Debug.LogWarning("completing cycle");
                 erosionJobCtl.CloseJob();
-                poolUpdates.Clear();
-                if (!poolsReady){GetPoolBuffers();} 
                 ApplyMeshUpdate();
                 BakeUpdatedMesh();
                 Debug.Log("Job done! (baking queued)");
@@ -302,195 +272,54 @@ namespace xshazwar.noize.geologic {
                 #endif
             }else if((updateContinuous || updateSingle) && !erosionJobCtl.isRunning){
                 updateSingle = false;
-                // GenerateJunk();
-                // ScheduleJob();
-                // TriggerCycle();
-                // TriggerCycleSingleThread();
                 TriggerCycleBeyer();
-                // updateContinuous = false;
             }
-            // else if(updateContinuous){
-            //     updateContinuous = false;
-            //     Debug.LogError("job still running??");
-            // }
             DrawWater();
         }
 
-        public void RegisterChange(Vector2Int pos, float volume){
-            poolUpdates.Enqueue(
-                new PoolUpdate {
-                    minimaIdx = GetAssociatedMinima(pos),
-                    volume = volume
-                }
-            );
-            updateContinuous = true;
-        }
-
-        public int GetAssociatedMinima(Vector2Int pos){
-            pos.x += marginRes;
-            pos.y += marginRes;
-            int idx = (pos.x * generatorResolution) + pos.y;
-            if(!catchment.ContainsKey(idx)){
-                throw new ArgumentException("No catchment at this location");
-            }
-            int minimaIdx = 0;
-            catchment.TryGetValue(idx, out minimaIdx);
-            return minimaIdx;
-        }
-
-        public PoolKey GetAssociateFirstOrderKey(int minimaIdx){
-            return new PoolKey() { idx = minimaIdx, order = 1, n = 0 };
-        }
-
-        public void GetAssociatedPools(PoolKey key, out HashSet<Pool> direct, out HashSet<Pool> peers){
-            direct = new HashSet<Pool>();
-            peers = new HashSet<Pool>();
-            Pool pool = new Pool(){ indexMinima = -1 };
-            key = RollUpToCurrent(key);
-            while(pools.ContainsKey(key)){
-                pools.TryGetValue(key, out pool);
-                if(!pool.Exists()) return;
-                direct.Add(pool);
-                CollectAssociatedPools(pool, ref direct, ref peers);
-                if(pool.HasParent()){
-                    key = pool.supercededBy;
-                }else{
-                    return;
-                }
-            }
-        }
-
-        public PoolKey RollUpToCurrent(PoolKey key){
-            PoolKey last = new PoolKey();
-            Pool pool = new Pool(){ indexMinima = -1 };
-            while(pools.ContainsKey(key)){
-                pools.TryGetValue(key, out pool);
-                if(!pool.Exists()) return last;
-                if(pool.HasParent() && pools[pool.supercededBy].volume > 0f){
-                    last = key;
-                    key = pool.supercededBy;
-                }else{
-                    return key;
-                }
-            }
-            throw new Exception();
-        }
-
-        public void CollectAssociatedPools(Pool pool, ref HashSet<Pool> direct, ref HashSet<Pool> peers){
-            Pool peer = new Pool();
-            PoolKey key = new PoolKey();
-            for(int i = 0; i < pool.PeerCount(); i ++){
-                key = pool.GetPeer(i);
-                pools.TryGetValue(key, out peer);
-                if(direct.Contains(peer)) {
-                    continue;
-                }
-                if(peers.Add(peer)){
-                    CollectAssociatedPools(peer, ref direct, ref peers);
-                }
-            }
-        }
-        
-        // public void GenerateJunk(){
-            
-        //     NativeArray<PoolKey> keys = pools.GetKeyArray(Allocator.Temp);
-        //     Pool pool = new Pool();
-        //     foreach(PoolKey key in keys){
-        //         pools.TryGetValue(key, out pool);
-        //         poolUpdates.Add(
-        //             new PoolUpdate {
-        //                 minimaIdx = key.idx,
-        //                 volume = 0.5f * magnitude * pool.capacity
-        //             }
-        //         );
+        // public void TriggerCycle(){
+        //     JobHandle handle = default;
+        //     for (int i = 0; i < Cycles; i++){
+        //         JobHandle cycleJob = ErosionCycleMultiThreadJob.Schedule(heightMap, poolMap, streamMap, particleTrack, particles, events, EVENT_LIMIT, generatorResolution, handle);
+        //         JobHandle processJob = ProcessErosiveEventsJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, events, poolUpdates, catchment, generatorResolution, cycleJob);
+        //         handle = processJob;
         //     }
-        //     keys.Dispose();
+        //     JobHandle writerJob = WriteErosionMaps.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, events, poolUpdates, catchment, boundary_BM, pools, generatorResolution, handle);
+        //     Debug.LogWarning("Cycle started");
+        //     erosionJobCtl.TrackJob(writerJob);
         // }
 
-        public void TriggerCycle(){
-            JobHandle handle = default;
-            for (int i = 0; i < Cycles; i++){
-                JobHandle cycleJob = ErosionCycleMultiThreadJob.Schedule(heightMap, poolMap, streamMap, particleTrack, particles, events, EVENT_LIMIT, generatorResolution, handle);
-                JobHandle processJob = ProcessErosiveEventsJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, events, poolUpdates, catchment, generatorResolution, cycleJob);
-                handle = processJob;
-            }
-            JobHandle writerJob = WriteErosionMaps.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, events, poolUpdates, catchment, boundary_BM, pools, generatorResolution, handle);
-            Debug.LogWarning("Cycle started");
-            erosionJobCtl.TrackJob(writerJob);
-        }
-
-        public void TriggerCycleSingleThread(){
-            JobHandle handle = default;
-            JobHandle cycle = default;
-            for (int i = 0; i < Cycles; i++){
-                cycle = ErosionCycleSingleThreadJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, particles, events, EVENT_LIMIT, generatorResolution, handle);
-                handle = UpdateFlowFromTrackJob.Schedule(poolMap, streamMap, particleTrack, generatorResolution, cycle);
-            }
-            handle = ScheduleMeshUpdate(handle);
-            Debug.LogWarning("Cycle started");
-            erosionJobCtl.TrackJob(handle);
-        }
+        // public void TriggerCycleSingleThread(){
+        //     JobHandle handle = default;
+        //     JobHandle cycle = default;
+        //     for (int i = 0; i < Cycles; i++){
+        //         cycle = ErosionCycleSingleThreadJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, particles, events, EVENT_LIMIT, generatorResolution, handle);
+        //         handle = UpdateFlowFromTrackJob.Schedule(poolMap, streamMap, particleTrack, generatorResolution, cycle);
+        //     }
+        //     handle = ScheduleMeshUpdate(handle);
+        //     Debug.LogWarning("Cycle started");
+        //     erosionJobCtl.TrackJob(handle);
+        // }
 
         public void TriggerCycleBeyer(){
-            poolsReady = false;
             JobHandle handle = default;
             JobHandle cycle = default;
+            NativeSlice<float> heightSlice = new NativeSlice<float>(heightMap);
+            NativeSlice<float> tmpSlice = new  NativeSlice<float>(tmp);
             for (int i = 0; i < Cycles; i++){
-                handle = poolSolver.Schedule(new NativeSlice<float>(heightMap), handle);
                 cycle = ErosionCycleBeyerParticleJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, beyerParticles, events, EVENT_LIMIT, generatorResolution, handle);
                 handle = UpdateFlowFromTrackJob.Schedule(poolMap, streamMap, particleTrack, generatorResolution, cycle);
                 if(thermalErosion){
-                    handle = ThermalErosionFilter.Schedule(new NativeSlice<float>(heightMap), talusAngle, thermalStepSize, 0.75f, 1, generatorResolution, handle);
+                    handle = ThermalErosionFilter.Schedule(heightSlice, talusAngle, thermalStepSize, 0.75f, thermalCyclesPerCycle, generatorResolution, handle);
                 }
                 // handle = ThermalErosionFilter.Schedule(new NativeSlice<float>(heightMap), .001f, 0.25f, 4, generatorResolution, handle);
             }
             // handle = ThermalErosionFilter.Schedule(new NativeSlice<float>(heightMap), 30f, 0.5f, .75f, 4, generatorResolution, handle);
-            handle = GaussFilter.Schedule(new NativeSlice<float>(heightMap), new NativeSlice<float>(tmp), 7, GaussSigma.s0d50, generatorResolution, handle);
-            handle = poolSolver.Schedule(new NativeSlice<float>(heightMap), handle);
+            handle = GaussFilter.Schedule(heightSlice, tmpSlice, 5, GaussSigma.s0d50, generatorResolution, handle);
             handle = ScheduleMeshUpdate(handle);
             Debug.LogWarning("Cycle started");
             erosionJobCtl.TrackJob(handle);
         }
-
-        // public void ScheduleJob(){
-        //     JobHandle first = UpdatePoolValues.ScheduleRun(
-        //         poolUpdates,
-        //         pools,
-        //         default
-        //     );
-        //     // JobHandle second = PoolInterpolationDebugJob.ScheduleJob(pools, first);
-        //     JobHandle third = DrawPoolsJob.Schedule(
-        //         new NativeSlice<float>(poolMap),
-        //         new NativeSlice<float>(heightMap),
-        //         catchment,
-        //         boundary_BM,
-        //         pools,
-        //         generatorResolution,
-        //         // second
-        //         first
-        //     );
-        //     erosionJobCtl.TrackJob(third);
-        // }
-
-        // public void ScheduleJob(){
-        //     JobHandle first = UpdatePoolValues.ScheduleRun(
-        //         poolUpdates,
-        //         pools,
-        //         default
-        //     );
-        //     // JobHandle second = PoolInterpolationDebugJob.ScheduleJob(pools, first);
-        //     JobHandle third = DrawPoolsJob.Schedule(
-        //         new NativeSlice<float>(poolMap),
-        //         new NativeSlice<float>(heightMap),
-        //         catchment,
-        //         boundary_BM,
-        //         pools,
-        //         generatorResolution,
-        //         // second
-        //         first
-        //     );
-        //     erosionJobCtl.TrackJob(third);
-        // }
 
         public void DrawWater(){
             Graphics.DrawMeshInstancedIndirect(waterMesh, 0, poolMaterial, bounds, argsBuffer, 0, poolMatProps);
@@ -502,7 +331,6 @@ namespace xshazwar.noize.geologic {
             poolBuffer.Release();
             heightBuffer.Release();
             streamBuffer.Release();
-            poolSolver.OnDestroy();
         }
 
 

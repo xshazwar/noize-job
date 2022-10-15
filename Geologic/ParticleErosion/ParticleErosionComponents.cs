@@ -1169,7 +1169,6 @@ namespace xshazwar.noize.geologic {
             int step = 0;
             bool done = false;
             ErosiveEvent evt;
-            int next = 0;
             while(true){
                 done = p.DescentCompleteSingle(ref tile, out evt);
                 // next = tile.getIdx(p.pos);
@@ -1190,7 +1189,6 @@ namespace xshazwar.noize.geologic {
                 }
                 step++;
             }
-            return step;
         }
 
         // Single Thread

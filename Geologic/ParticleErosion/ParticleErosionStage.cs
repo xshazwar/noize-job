@@ -18,7 +18,6 @@ namespace xshazwar.noize.geologic {
 
         public bool Draw2d = false;
 
-
         static ParticlePoolMinimaJobDelegate minimaJob = ParticlePoolMinimaJob.ScheduleParallel;
         static ParticlePoolCollapseJobDelegate poolCollapseJob = ParticlePoolCollapseJob.ScheduleParallel;
         static DrainSolvingJobDelegate drainSolveJob = DrainSolvingJob.Schedule;

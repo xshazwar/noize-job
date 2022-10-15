@@ -189,11 +189,10 @@ namespace xshazwar.noize.scripts {
             //Add Components
             MeshFilter filter = go.AddComponent<MeshFilter>();
             MeshRenderer renderer = go.AddComponent<MeshRenderer>();
-            PoolDrawer poolDrawer = go.AddComponent<PoolDrawer>();
+            LiveErosion erosion = go.AddComponent<LiveErosion>();
             Rigidbody rb = go.AddComponent<Rigidbody>();
             rb.isKinematic = true;
-            go.AddComponent<LivePoolDebugger>();
-            poolDrawer.SetFromTileGenerator(
+            erosion.SetFromTileGenerator(
                 activeTiles[data.uuid], this, data.mesh
             );
             string key = pos.ToString();
