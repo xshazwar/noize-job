@@ -89,21 +89,21 @@ namespace xshazwar.noize.scripts {
             meshes = new NativeArray<int>(meshIDs.ToArray(), Allocator.Persistent);
             #if UNITY_EDITOR
                 wall = System.Diagnostics.Stopwatch.StartNew();
-                Debug.LogWarning($"Mesh batch of size {inProgress.Count} starting");
+                // Debug.LogWarning($"Mesh batch of size {inProgress.Count} starting");
             #endif
             jobHandle = job(meshes, default);
         }
 
         public void JobFinished(){
             foreach(MeshBakeOrder o in inProgress){
-                o.onCompleteBake.Invoke(o.uuid);
+                // o.onCompleteBake.Invoke(o.uuid);
                 activeOrders.Remove(o.uuid);
             }
             meshes.Dispose();
             meshes = default;
             #if UNITY_EDITOR
                 wall.Stop();
-                Debug.LogWarning($"Mesh batch of size {inProgress.Count} complete in {wall.ElapsedMilliseconds}ms");
+                // Debug.LogWarning($"Mesh batch of size {inProgress.Count} complete in {wall.ElapsedMilliseconds}ms");
             #endif
         }
 

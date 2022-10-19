@@ -73,11 +73,20 @@ namespace xshazwar.noize.filter.blur {
         
 
         public void Execute (int z) {
-            int offset = z % 2 == 0 ? 0 : 1;
+            int offset = 0;
+            z *= 2;
+            if(flip == 0){
+                offset = z % 2 == 0 ? 0 : 1;
+            }else{
+                offset = z % 2 == 0 ? 1 : 0;
+                z += 1;
+            }
+            // int offset = z % 2 == 0 ? 0 : 1;
             for (int x = offset; x < resolution; x += 2){
                 rectifyNeighborhood(x, z);
             }
         }
+
         public static JobHandle Schedule (
 			NativeSlice<float> src,
             float talus, // degrees
@@ -100,7 +109,7 @@ namespace xshazwar.noize.filter.blur {
                 for(int flipflop = 0; flipflop <= 1; flipflop++){
                     job.flip = flipflop;
                     handle = job.ScheduleParallel(
-                        resolution, 32, handle
+                        (int) resolution / 2, 10, handle
                     );
                 }
             }

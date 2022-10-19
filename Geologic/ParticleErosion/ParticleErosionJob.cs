@@ -547,37 +547,36 @@ namespace xshazwar.noize.geologic {
         }
     }
 
-    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
-    public struct UpdateFlowFromTrackJob: IJobFor {
-        WorldTile tile;
-        int res;
+    // [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+    // public struct UpdateFlowFromTrackJob: IJobFor {
+    //     WorldTile tile;
+    //     int res;
 
-        public void Execute(int z){
-            for (int x = 0; x < res; x++){
-                tile.UpdateFlowMapFromTrack(x, z);
-            }
-        }
+    //     public void Execute(int z){
+    //         for (int x = 0; x < res; x++){
+    //             tile.UpdateFlowMapFromTrack(x, z);
+    //         }
+    //     }
 
-        public static JobHandle Schedule(
-            NativeArray<float> pool,
-            NativeArray<float> flow,
-            NativeArray<float> track,
-            int res,
-            JobHandle deps
-        ){
-            var job = new UpdateFlowFromTrackJob(){
-                res = res,
-                tile = new WorldTile {
-                    pool = pool,
-                    flow = flow,
-                    track = track,
-                    res = new int2(res, res)
-                }
-            };
-            return job.ScheduleParallel(res, res, deps);
-        }
-
-    }
+    //     public static JobHandle Schedule(
+    //         NativeArray<float> pool,
+    //         NativeArray<float> flow,
+    //         NativeArray<float> track,
+    //         int res,
+    //         JobHandle deps
+    //     ){
+    //         var job = new UpdateFlowFromTrackJob(){
+    //             res = res,
+    //             tile = new WorldTile {
+    //                 pool = pool,
+    //                 flow = flow,
+    //                 track = track,
+    //                 res = new int2(res, res)
+    //             }
+    //         };
+    //         return job.ScheduleParallel(res, res, deps);
+    //     }
+    // }
 
 
 

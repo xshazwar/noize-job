@@ -257,18 +257,34 @@ namespace xshazwar.noize.geologic {
         public float water;
         public float sediment;
         public bool isDead;
+        public int age;
+        
+        // Single Configuration
+        // // tuning constants
+        // static readonly float INERTIA = 0.5f;
+        // static readonly float GRAVITY = 1f;
+        // static readonly float FRICTION = .9f;
+        // // static readonly float EVAP = .001f;
+        // static readonly float EVAP = .01f;
+        // static readonly float EROSION = 0.5f;
+        // static readonly float DEPOSITION = 0.1f;
+        // static readonly float MINSLOPE = 0.01f;
+        // static readonly float CAPACITY = 1f;
+        // static readonly int MAXAGE = 128;
+        // // end tuning
 
         // tuning constants
-        static readonly float INERTIA = 0.5f;
+        static readonly float INERTIA = 0.6f;
         static readonly float GRAVITY = 1f;
         static readonly float FRICTION = .9f;
         // static readonly float EVAP = .001f;
         static readonly float EVAP = .01f;
-        static readonly float EROSION = 0.5f;
-        static readonly float DEPOSITION = 0.1f;
-        static readonly float MINSLOPE = 0.01f;
-        static readonly float CAPACITY = 1f;
-        static readonly int MAXSTEPS = 64;
+        static readonly float EROSION = 0.04f;
+        static readonly float DEPOSITION = 0.01f;
+        static readonly float MINSLOPE = 0.00001f;
+        static readonly float CAPACITY = 2f;
+        static readonly int MAXAGE = 64;
+        static readonly float TERMINAL_VELOCITY = 4f;
         // end tuning
         static readonly float2 res = new float2(3000f / 256f, 3000f/ 256f);
 
@@ -302,11 +318,13 @@ namespace xshazwar.noize.geologic {
 
         public void Reset(int2 pos){
             this.pos = new float2(pos);
+            // Debug.Log($"reset -> {this.pos.x}, {this.pos.y}");
             this.dir = new float2(0f, 0f);
             this.vel = 0f;
             this.water = 1f;
             this.sediment = 0f;
             this.isDead = false;
+            this.age = 0;
         }
 
         public float2 nextPos(ref WorldTile tile) {
@@ -323,25 +341,12 @@ namespace xshazwar.noize.geologic {
             }else{
                 dir = gnorm;
             }
-            
-            
-            // dir = normalize(dir * (INERTIA) + gnorm * ( 1f - INERTIA));
-
-            // dir = normalize(lerp(g, dir, (INERTIA * (1 - .125f * tile.flow[idx]))));
-            // dir = normalize(lerp(g, dir, (INERTIA * (1 - tile.flow[idx]))));
-
-            // if(length(g) > .1){
-            //     float2 gnorm = normalize(g);
-            //     dir = normalize(dir * (INERTIA) + gnorm * ( 1f - INERTIA));
-            //     // dir = normalize(lerp(g, dir, (INERTIA * (1 - .125f * tile.flow[idx]))));
-            // }
-            // return round(pos + dir);
             return pos + dir;
         }
 
         public void DoDescent(ref WorldTile tile){
             int steps = 0;
-            while(steps < MAXSTEPS && Descend(ref tile)){
+            while(steps < MAXAGE && Descend(ref tile)){
                 steps += 1;
             }
         }
@@ -351,6 +356,79 @@ namespace xshazwar.noize.geologic {
             float trackVolume = tile.track[idx];
             trackVolume += water;
             tile.track[idx] = trackVolume;
+        }
+
+        public bool DescendSimultaneous(ref WorldTile tile, out ErosiveEvent evt){
+            int idx = tile.getIdx(pos);
+            evt = idx;
+            if(age >= MAXAGE || water < .001f){
+                isDead = true;
+                evt.deltaPoolMap = water / WorldTile.HEIGHT;
+                // evt.deltaSediment = sediment;
+                return false;
+            }
+            age++;
+            float2 posN = nextPos(ref tile);
+            if (posN.Equals(pos)) {
+                isDead = true;
+                return false;
+            } // did not descend
+            if (tile.OutOfBounds(posN)) {
+                isDead = true;
+                return false;
+            } // went OOB
+            if(tile.StandingWater(pos)){
+                evt.deltaPoolMap = water / WorldTile.HEIGHT;
+                isDead = true;
+                return false;
+            }else{
+                evt.deltaWaterTrack = water;
+            }
+            // UpdateTrack(ref tile);
+            float currentHeight = tile.WIH(pos);
+            float hDiff = tile.WIH(posN) - tile.WIH(pos); // in world Meters
+            float vDiff = abs(hDiff);
+            float depositionAmount = 0f;
+            float currentCapacity = 0f;
+            // going uphill
+            if(hDiff > 0 ) {
+                // deposit sediment
+                depositionAmount = min((DEPOSITION * sediment), 0.1f * vDiff);
+                if(depositionAmount < 0f) Debug.LogError("eroding on deposit?");
+            }else{ // downhill
+                currentCapacity = max(vDiff, MINSLOPE) * vel * water * CAPACITY;
+                if (sediment < currentCapacity){
+                    // erode
+                    depositionAmount = -1f * max(min(EROSION * (currentCapacity - sediment), vDiff), 0f);
+                    if(depositionAmount > 0f) Debug.LogError($"depositing on erosion? v:{vel}, {sediment}/{currentCapacity}");
+                }
+                else{
+                    // deposit
+                    depositionAmount = (DEPOSITION * (sediment - currentCapacity));
+                    // depositionAmount = min((DEPOSITION * (sediment - currentCapacity)), 0.1f * vDiff);
+                    if(depositionAmount < 0f) Debug.LogError("eroding on deposit?");
+                }
+            }
+            if(abs(depositionAmount) > 0.001f){
+                // DepositSediment(ref tile, pos, depositionAmount);
+                evt.deltaSediment = depositionAmount;
+                sediment -= depositionAmount;
+            }
+
+            float effectiveFriction = FRICTION * (1 - tile.flow[idx]);
+            vel = min(sqrt(max(0f, vel * vel + (-hDiff) * (GRAVITY - effectiveFriction))), TERMINAL_VELOCITY);
+            // vel = min(sqrt(max(0f, vel * vel + (-hDiff) * (GRAVITY - effectiveFriction))), 120f);
+            // TODO PUT BACK IN
+            // if(vel < .1f){
+            //     // Debug.Log("Too slow");
+            //     evt.deltaPoolMap = water / WorldTile.HEIGHT;
+            //     // evt.deltaSediment = depositionAmount;
+            //     isDead = true;
+            //     return false;
+            // }
+            water = water * (1 - EVAP);
+            pos = posN;
+            return true;
         }
 
         public bool Descend(ref WorldTile tile){
@@ -386,14 +464,6 @@ namespace xshazwar.noize.geologic {
                     if(depositionAmount < 0f) Debug.LogError("eroding on deposit?");
                 }
             }
-            // if(hDiff > 0){
-            //    Debug.Log($"UH| {currentHeight} v: {pos.x},{pos.y}>>{vel} diff: {hDiff}: dropping {depositionAmount} / sed:{sediment}"); 
-            // }else{
-            //     Debug.Log($"DH| {currentHeight} v: {pos.x},{pos.y}>>{vel} diff: {hDiff}: {depositionAmount} sed:{sediment} / cap: {currentCapacity}");
-            // }
-            if(depositionAmount > sediment){
-                Debug.LogError("bad deposition value");
-            }
             if(abs(depositionAmount) > 0.05f){
                 float real = DepositSediment(ref tile, pos, depositionAmount);
                 sediment -= depositionAmount;
@@ -409,6 +479,7 @@ namespace xshazwar.noize.geologic {
             pos = posN;
             return true;
         }
+
         public float DepositSediment(ref WorldTile tile, float2 posD, float val){
             float amount = 0f;
             // float factor = val > 0f ? DEPOSITION : EROSION;
@@ -651,6 +722,7 @@ namespace xshazwar.noize.geologic {
         static readonly float SCALE = 256f * (3000f / 4000f);
         // static readonly float SCALE = 80f;
         // static readonly float SCALE = 0.1f;
+        public static readonly int2 ZERO2 = new int2(0);
         public int2 res;
         
         [NativeDisableContainerSafetyRestriction]
@@ -665,10 +737,10 @@ namespace xshazwar.noize.geologic {
         [NativeDisableContainerSafetyRestriction]
         public NativeArray<float> track;
 
-        static readonly int2 left = new int2(-1, 0);
-        static readonly int2 right = new int2(1, 0);
-        static readonly int2 up = new int2(0, 1);
-        static readonly int2 down = new int2(0, -1);
+        public static readonly int2 left = new int2(-1, 0);
+        public static readonly int2 right = new int2(1, 0);
+        public static readonly int2 up = new int2(0, 1);
+        public static readonly int2 down = new int2(0, -1);
         static readonly int2 ne = new int2(1, 1);
         static readonly int2 nw = new int2(-1, 1);
         static readonly int2 sw = new int2(-1, -1);
@@ -682,6 +754,7 @@ namespace xshazwar.noize.geologic {
 
         // static public readonly float maxdiff = 0.01f;  // maximum diff under which no modification will be made in either direction
         // static public readonly float maxdiff = 0.00005f; 
+        static public readonly float MINFLOWPOOL = .00005f;
         static public readonly float maxdiff = 0.0005f; 
         // static public readonly float settling = 0.1f;
         static public readonly float settling = 0.1f;
@@ -735,8 +808,19 @@ namespace xshazwar.noize.geologic {
             );
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool StandingWater(int x, int z){
+            return pool[SafeIdx(x, z)] > 0f;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool StandingWater(int2 pos){
             return pool[SafeIdx(pos)] > 0f;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool StandingWater(float2 pos){
+            return StandingWater(new int2(pos));
         }
 
         public float3 diff(float x, float z, int2 pos, int2 dir){
@@ -747,6 +831,12 @@ namespace xshazwar.noize.geologic {
         //     return height[idx] + pool[idx];
         // }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float WIV(int idx){
+            // return SCALE * (height[idx] + pool[idx]);
+            return height[idx] + pool[idx];
+        }
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float WIH(int idx){
             // return SCALE * (height[idx] + pool[idx]);
@@ -780,25 +870,20 @@ namespace xshazwar.noize.geologic {
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int SafeIdx(int x, int z){
-            if(x < 0) x = 0;
-            if(z < 0) z = 0;
-            if(x >= res.x) x = res.x - 1;
-            if(z >= res.y) z = res.y - 1;
-            return getIdx(x, z);
+            // int xp = clamp(x, 0, res.x - 1);
+            // int xv = x < 0 ? 0 : x;
+            // xv = x >= res.x ? res.x - 1: xv;
+            // if(xp != xv){
+            //     throw new ArgumentException($"xp {xp} != xv {xv}");
+            // }
+            return getIdx(
+                clamp(x, 0, res.x - 1),
+                clamp(z, 0, res.y - 1));
         }        
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int SafeIdx(int2 pos){
-            // int idx = getIdx(pos);
-            // if (idx >= 0){
-            //     return idx;
-            // }
-            // TODO interpolate a normal off the edge
-            if(pos.x < 0) pos.x = 0;
-            if(pos.y < 0) pos.y = 0;
-            if(pos.x >= res.x) pos.x = res.x - 1;
-            if(pos.y >= res.y) pos.y = res.y - 1;
-            return getIdx(pos);
+            return getIdx(clamp(pos, ZERO2, res - 1));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -808,9 +893,6 @@ namespace xshazwar.noize.geologic {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int getIdx(int x, int z){
-            // if(x >= res.x || z >= res.y || x < 0 || z < 0){
-            //     return -1;
-            // }
             return x * res.x + z;
         }
 
@@ -821,13 +903,11 @@ namespace xshazwar.noize.geologic {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int getIdx(float2 pos){
-            return getIdx(new int2(pos));
+            return getIdx((int) pos.x, (int) pos.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int2 getPos(int idx){
-            // int x = idx / res.x;
-            // int z = idx % res.x;
             return new int2((idx / res.x), (idx % res.x));
         }
 
@@ -846,11 +926,9 @@ namespace xshazwar.noize.geologic {
             int i = getIdx(x, z);
             float pv = flow[i];
             float tv = track[i];
-            // flow[i] = ((1f - lRate) * pv) + (lRate * 50.0f * track[i]) / (1f + 50.0f*track[i]);
-            
-            // flow[i] = ((1f - lRate) * pv) + (lRate * 255.0f * tv) / (1f + 255.0f* tv);
-            if(pool[i] > 0f){
-                flow[i] = 0f;
+            float poolV = pool[i];
+            if(poolV > MINFLOWPOOL){
+                flow[i] = ((1f - lRate) * pv);
             }
             else if(tv > 0f){
                 // flow[i] = ((1f - lRate) * pv) + (lRate * 255.0f * tv) / (1f + 255.0f* tv);
@@ -861,11 +939,10 @@ namespace xshazwar.noize.geologic {
                 }else{
                     flow[i] = (1f - lRate) * pv;
                 }
-                
             }
             track[i] = 0f;
-
-            // waterpath[i] = (1.0-lrate)*waterpath[i] + lrate*50.0f*track[i]/(1.0f + 50.0f*track[i]);
+            // Evaporation rate of pools
+            pool[i] = max(poolV - 0.00001f, 0f);
         }
 
         public void CascadeHeightMapChange(int idx){
@@ -1063,6 +1140,91 @@ namespace xshazwar.noize.geologic {
             }
             // Debug.Log($"no drain found after {c} rounds");
             return false;
+        }
+        
+        public void SpreadPool(int x, int z, ref NativeArray<FloodedNeighbor> buff){
+            int idx = getIdx(x, z);
+            float hLand = height[idx];
+            float hWater = pool[idx];
+            // Debug.Log($"dist >> {hWater}");
+            float tHeight = hLand + hWater;
+            if(x == 0 || z == 0 || x == res.x - 1 || z == res.y - 1){
+                buff[0] = new FloodedNeighbor(SafeIdx(up.x + x, up.y + z), ref this);
+                buff[1] = new FloodedNeighbor(SafeIdx(right.x + x, right.y + z), ref this);
+                buff[2] = new FloodedNeighbor(SafeIdx(down.x + x, down.y + z), ref this);
+                buff[3] = new FloodedNeighbor(SafeIdx(left.x + x, left.y + z), ref this);
+                
+            }else{
+                buff[0] = new FloodedNeighbor(getIdx(up.x + x, up.y + z), ref this);
+                buff[1] = new FloodedNeighbor(getIdx(right.x + x, right.y + z), ref this);
+                buff[2] = new FloodedNeighbor(getIdx(down.x + x, down.y + z), ref this);
+                buff[3] = new FloodedNeighbor(getIdx(left.x + x, left.y + z), ref this);
+            }
+            buff.Sort<FloodedNeighbor>();
+            float fill = 0f;
+            float diffV = 0f;
+            for(int e = 0; e < 4; e++){
+                fill = 0f;
+                diffV = tHeight - buff[e].current; // if we moved the whole difference, they would just swap
+                if(diffV > 0f){
+                    if(hWater <= 0f){
+                        continue;
+                    }
+                    fill = min(0.25f * hWater, 0.25f * diffV);
+                    hWater -= fill;
+                    tHeight = hLand + hWater;
+                    buff[e].Commit(fill, ref this);
+
+                }else if (diffV < 0f){
+                    if(buff[e].water <= 0f){
+                        continue;
+                    }
+                    fill = min(0.25f * buff[e].water, -0.25f * diffV);
+                    hWater += fill;
+                    tHeight = hLand + hWater;
+                    buff[e].Commit(-1f * fill, ref this);
+                }
+            }
+            pool[idx] = hWater;
+        }
+    }
+
+    // Flooding Helper
+    public struct FloodedNeighbor: IComparable<FloodedNeighbor>, IEquatable<FloodedNeighbor> {
+        
+        public int idx;
+        public float height;
+        public float water;
+        public float current {
+            get { return height + water;}
+            private set {}
+        }
+
+        public FloodedNeighbor(int idx, ref WorldTile tile){
+            this.idx = idx;
+            this.height = tile.height[this.idx];
+            this.water = tile.pool[this.idx];
+        }
+
+        public void Commit(float val, ref WorldTile tile){
+            tile.pool[idx] = water + val;
+
+        }
+
+        public int CompareTo(FloodedNeighbor obj){
+            if (obj.Equals(this)){ return 0;}
+            return GetHashCode() > obj.GetHashCode() ? 1 : -1;
+        }
+
+        public override int GetHashCode(){
+            return current.GetHashCode();
+        }
+
+        public bool Equals(FloodedNeighbor other){
+            if (idx != other.idx){
+                return false;
+            }
+            return true;
         }
     }
 

@@ -1098,6 +1098,9 @@ namespace xshazwar.noize.geologic {
         private Unity.Mathematics.Random random;
         static readonly int2 ZERO = new int2(0,0);
 
+        public static readonly float[] KERNEL3 = new float[] { 0.30780132912347f, 0.38439734175306006f, 0.30780132912347f };
+        public static readonly float[] KERNEL5 = new float[] { 0.12007838424321349f, 0.23388075658535032f, 0.29208171834287244f, 0.23388075658535032f, 0.12007838424321349f };
+
         public int2 MaxPos {
             get { return tile.res;}
             private set {}
@@ -1132,6 +1135,22 @@ namespace xshazwar.noize.geologic {
                 step++;
             }
             return step;
+        }
+
+        public void BeyerSimultaneousDescent(
+            ref BeyerParticle p,
+            int seed,
+            int maxSteps
+        ){
+            random = new Unity.Mathematics.Random((uint) seed);
+            int steps = 0;
+            ErosiveEvent evt;
+            do{
+                if(p.isDead) p.Reset(RandomPos());
+                p.DescendSimultaneous(ref tile, out evt);
+                eventWriter.Enqueue(evt);
+                steps += 1;
+            } while (steps < maxSteps);
         }
 
         // Single Thread
@@ -1220,6 +1239,67 @@ namespace xshazwar.noize.geologic {
                 tile.height[evt.idx] = v;
                 tile.CascadeHeightMapChange(evt.idx);
             }
+        }
+
+        public void CommitBeyerUpdateToMaps(
+            ErosiveEvent evt,
+            ref NativeArray<float> kernel3,
+            ref NativeArray<float> kernel5
+        ){
+            // if(abs(evt.deltaPoolMap) > 0f){
+            //     float v = tile.pool[evt.idx];
+            //     v += 0.1f * evt.deltaPoolMap;
+            //     tile.pool[evt.idx] = v;
+            //     // tile.CascadeHeightMapChange(evt.idx);
+            // }
+            if(abs(evt.deltaPoolMap) > 0f){
+                Place(evt.idx, evt.deltaPoolMap, 1f, ref tile.pool);
+            }
+            if(abs(evt.deltaWaterTrack) > 0f){
+                // Debug.Log($"track delta {evt.deltaWaterTrack}");
+                // float v = tile.track[evt.idx];
+                // v += evt.deltaWaterTrack;
+                // tile.track[evt.idx] = v;
+                KernelDisperse(evt.idx, evt.deltaWaterTrack, 1f, ref tile.track, 3, ref kernel3);
+            }
+            if(abs(evt.deltaSediment) > 0f){
+                // DepositSediment(evt.idx, evt.deltaSediment);
+                KernelDisperse(evt.idx, evt.deltaSediment, WorldTile.HEIGHT, ref tile.height, 5, ref kernel5);
+                // float v = tile.height[evt.idx];
+                // v += evt.deltaSediment;
+                // // Debug.Log($"height delta {evt.deltaSediment}");
+                // tile.height[evt.idx] = v;
+                // // tile.CascadeHeightMapChange(evt.idx);
+            }
+        }
+
+        public void KernelDisperse(int idx, float val, float scalingFactor, ref NativeArray<float> buffer, int kernelSize, ref NativeArray<float> kernel){
+            float offset = floor((float) kernelSize / 2f);
+            float2 posD = new float2(tile.getPos(idx));
+            float kernelFactor = 1f;
+            float2 probe = new float2(0);
+            for (int x = 0; x < kernelSize; x++){
+                for( int z = 0; z < kernelSize; z++){
+                    // TODO generalize for other kernels?
+                    // kernelFactor = kernelSize == 5 ? KERNEL5[x] * KERNEL5[z]: KERNEL3[x] * KERNEL3[z];
+                    kernelFactor = kernel[x] * kernel[z];
+                    probe.x = posD.x - offset + (float) x;
+                    probe.y = posD.y - offset + (float) z;
+                    idx = tile.SafeIdx(probe);
+                    float last = buffer[idx];
+                    float newDiff =  ((val * kernelFactor) / scalingFactor);
+                    float nextV = last + newDiff;
+                    if(nextV > 1f){continue;} // bad build breaker
+                    if(nextV < 0f){continue;} // bad build breaker
+                    buffer[idx] = last + newDiff;
+                }
+            }
+        }
+
+        public void Place(int idx, float val, float scalingFactor, ref NativeArray<float> buffer){
+            float last = buffer[idx];
+            last += val / scalingFactor;
+            buffer[idx] = last;
         }
     }
 
