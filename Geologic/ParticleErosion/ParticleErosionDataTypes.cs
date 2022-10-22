@@ -278,11 +278,11 @@ namespace xshazwar.noize.geologic {
         static readonly float GRAVITY = 1f;
         static readonly float FRICTION = .9f;
         // static readonly float EVAP = .001f;
-        static readonly float EVAP = .01f;
+        static readonly float EVAP = .001f;
         static readonly float EROSION = 0.04f;
         static readonly float DEPOSITION = 0.01f;
         static readonly float MINSLOPE = 0.00001f;
-        static readonly float CAPACITY = 2f;
+        static readonly float CAPACITY = 1f;
         static readonly int MAXAGE = 64;
         static readonly float TERMINAL_VELOCITY = 4f;
         // end tuning
@@ -304,6 +304,19 @@ namespace xshazwar.noize.geologic {
         // static readonly float[] KERNEL = new float[] { 0.30780132912347f, 0.38439734175306006f, 0.30780132912347f };
         // static readonly float[] KERNEL = new float[] { 0.12007838424321349f, 0.23388075658535032f, 0.29208171834287244f, 0.23388075658535032f, 0.12007838424321349f };
 
+        public BeyerParticle(int2 pos, bool dead){
+            this.pos = new float2(pos);
+            this.dir = new float2(0f, 0f);
+            this.vel = 0f;
+            this.water = 1f;
+            this.sediment = 0f;
+            this.isDead = dead;
+            this.age = 0;
+        }
+
+        public BeyerParticle(int2 pos, float water): this(pos, false){
+            this.water = water;
+        }
 
         public bool Equals(BeyerParticle other){
             // TODO use lazy comparer for the floats
@@ -758,7 +771,8 @@ namespace xshazwar.noize.geologic {
         static public readonly float maxdiff = 0.0005f; 
         // static public readonly float settling = 0.1f;
         static public readonly float settling = 0.1f;
-        static readonly float lRate = 0.01f;
+        // static readonly float lRate = 0.01f;
+        static readonly float lRate = 0.05f;
 
         // public float3 Normal(int2 pos){
         //     // returns normal of the (WIH)
@@ -928,7 +942,7 @@ namespace xshazwar.noize.geologic {
             float tv = track[i];
             float poolV = pool[i];
             if(poolV > MINFLOWPOOL){
-                flow[i] = ((1f - lRate) * pv);
+                flow[i] = ((1f - 0.1f * lRate) * pv);
             }
             else if(tv > 0f){
                 // flow[i] = ((1f - lRate) * pv) + (lRate * 255.0f * tv) / (1f + 255.0f* tv);
@@ -942,7 +956,7 @@ namespace xshazwar.noize.geologic {
             }
             track[i] = 0f;
             // Evaporation rate of pools
-            pool[i] = max(poolV - 0.00001f, 0f);
+            // pool[i] = max(poolV - 0.00001f, 0f);
         }
 
         public void CascadeHeightMapChange(int idx){
@@ -1142,7 +1156,58 @@ namespace xshazwar.noize.geologic {
             return false;
         }
         
-        public void SpreadPool(int x, int z, ref NativeArray<FloodedNeighbor> buff){
+        // public void SpreadPool(int x, int z, ref NativeArray<FloodedNeighbor> buff){
+        //     int idx = getIdx(x, z);
+        //     float hLand = height[idx];
+        //     float hWater = pool[idx];
+        //     // Debug.Log($"dist >> {hWater}");
+        //     float tHeight = hLand + hWater;
+        //     if(x == 0 || z == 0 || x == res.x - 1 || z == res.y - 1){
+        //         buff[0] = new FloodedNeighbor(SafeIdx(up.x + x, up.y + z), ref this);
+        //         buff[1] = new FloodedNeighbor(SafeIdx(right.x + x, right.y + z), ref this);
+        //         buff[2] = new FloodedNeighbor(SafeIdx(down.x + x, down.y + z), ref this);
+        //         buff[3] = new FloodedNeighbor(SafeIdx(left.x + x, left.y + z), ref this);
+                
+        //     }else{
+        //         buff[0] = new FloodedNeighbor(getIdx(up.x + x, up.y + z), ref this);
+        //         buff[1] = new FloodedNeighbor(getIdx(right.x + x, right.y + z), ref this);
+        //         buff[2] = new FloodedNeighbor(getIdx(down.x + x, down.y + z), ref this);
+        //         buff[3] = new FloodedNeighbor(getIdx(left.x + x, left.y + z), ref this);
+        //     }
+        //     buff.Sort<FloodedNeighbor>();
+        //     float fill = 0f;
+        //     float diffV = 0f;
+        //     for(int e = 0; e < 4; e++){
+        //         fill = 0f;
+        //         diffV = tHeight - buff[e].current; // if we moved the whole difference, they would just swap
+        //         if(diffV > 0f){
+        //             if(hWater <= 0f){
+        //                 continue;
+        //             }
+        //             fill = min(0.25f * hWater, 0.25f * diffV);
+        //             hWater -= fill;
+        //             tHeight = hLand + hWater;
+        //             buff[e].Commit(fill, ref this);
+
+        //         }else if (diffV < 0f){
+        //             if(buff[e].water <= 0f){
+        //                 continue;
+        //             }
+        //             fill = min(0.25f * buff[e].water, -0.25f * diffV);
+        //             hWater += fill;
+        //             tHeight = hLand + hWater;
+        //             buff[e].Commit(-1f * fill, ref this);
+        //         }
+        //     }
+        //     pool[idx] = hWater;
+        // }
+
+        public void SpreadPool(
+            int x,
+            int z,
+            ref NativeArray<FloodedNeighbor> buff,
+            ref NativeQueue<BeyerParticle>.ParallelWriter particleQueue
+        ){
             int idx = getIdx(x, z);
             float hLand = height[idx];
             float hWater = pool[idx];
@@ -1166,7 +1231,19 @@ namespace xshazwar.noize.geologic {
             for(int e = 0; e < 4; e++){
                 fill = 0f;
                 diffV = tHeight - buff[e].current; // if we moved the whole difference, they would just swap
-                if(diffV > 0f){
+                if( buff[e].water <= 0f && hLand > buff[e].height ){
+                    // Found Drain!
+                    // Debug.Log("found drain!");
+                    fill = 0.5f * hWater;
+                    particleQueue.Enqueue(
+                        new BeyerParticle(
+                            getPos(buff[e].idx),
+                            fill
+                        )
+                    );
+                    hWater -= fill;
+                    tHeight = hLand + hWater;
+                }else if(diffV > 0f){
                     if(hWater <= 0f){
                         continue;
                     }
@@ -1174,7 +1251,6 @@ namespace xshazwar.noize.geologic {
                     hWater -= fill;
                     tHeight = hLand + hWater;
                     buff[e].Commit(fill, ref this);
-
                 }else if (diffV < 0f){
                     if(buff[e].water <= 0f){
                         continue;

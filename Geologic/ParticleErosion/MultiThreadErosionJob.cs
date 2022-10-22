@@ -16,6 +16,91 @@ using xshazwar.noize.filter;
 namespace xshazwar.noize.geologic {
     using Unity.Mathematics;
 
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct FillBeyerQueueJob: IJobParallelFor {
+        FlowMaster fm;
+        [NativeDisableContainerSafetyRestriction]
+        NativeQueue<BeyerParticle>.ParallelWriter particleWriter;
+        int RND_SEED;
+        int COUNT;
+
+        public void Execute(int i){
+            // Debug.Log($"generating {COUNT} particles with random position");
+            fm.CreateRandomParticles(COUNT, RND_SEED + i, ref particleWriter);
+        }
+
+        public static JobHandle ScheduleParallel(
+            NativeQueue<BeyerParticle> particles,
+            int res,
+            int maxParticles,
+            JobHandle deps
+        ){
+            int threads = 10;
+            int currentParticles = particles.Count;
+            // Debug.Log($"current Particles {currentParticles}");
+            int seed = UnityEngine.Random.Range(0, Int32.MaxValue);
+            int required = maxParticles - currentParticles;
+            var job = new FillBeyerQueueJob {
+                fm = new FlowMaster {
+                    tile = new WorldTile {
+                        res = new int2(res, res)
+                    }
+                },
+                particleWriter = particles.AsParallelWriter(),
+                RND_SEED = seed,
+                COUNT = (int) floor(required / 10)
+            };
+            return job.Schedule<FillBeyerQueueJob>(threads, 1, deps);
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct CopyBeyerQueueJob: IJob {
+        NativeList<BeyerParticle> particles;
+
+        [NativeDisableContainerSafetyRestriction]
+        NativeQueue<BeyerParticle> particleQueue;
+
+        public void Execute(){
+            NativeArray<BeyerParticle> temp = particleQueue.ToArray(Allocator.Temp);
+            particles.CopyFrom(temp);
+        }
+
+        public static JobHandle ScheduleRun(
+            NativeList<BeyerParticle> particles,
+            NativeQueue<BeyerParticle> particleQueue,
+            JobHandle deps
+        ){
+            
+            var job = new CopyBeyerQueueJob {
+                particles = particles,
+                particleQueue = particleQueue
+            };
+            return job.Schedule(deps);
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct ClearBeyerQueueJob: IJob {
+        [NativeDisableContainerSafetyRestriction]
+        NativeQueue<BeyerParticle> particleQueue;
+
+        public void Execute(){
+            particleQueue.Clear();
+        }
+
+        public static JobHandle ScheduleRun(
+            NativeQueue<BeyerParticle> particleQueue,
+            JobHandle deps
+        ){
+            
+            var job = new ClearBeyerQueueJob {
+                particleQueue = particleQueue
+            };
+            return job.Schedule(deps);
+        }
+    }
+
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
     public struct BeyerCycleMultiThreadJob: IJobParallelFor {
         FlowMaster fm;
@@ -58,6 +143,48 @@ namespace xshazwar.noize.geologic {
                 MAX_STEPS = eventLimit
             };
             return job.Schedule<BeyerCycleMultiThreadJob>(particles.Length, 1, deps);
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct QueuedBeyerCycleMultiThreadJob: IJobParallelForDefer {
+        FlowMaster fm;
+        [ReadOnly]
+        NativeArray<BeyerParticle> particles;
+
+        public void Execute(int i){
+            BeyerParticle p = particles[i];
+            fm.BeyerSimultaneousDescentSingle(ref p);
+            particles[i] = p;
+        }
+
+        public static JobHandle ScheduleParallel(
+            NativeArray<float> height,
+            NativeArray<float> pool,
+            NativeArray<float> flow,
+            NativeArray<float> track,
+            NativeList<BeyerParticle> particles,
+            NativeQueue<ErosiveEvent> events,
+            int eventLimit,
+            int res,
+            JobHandle deps
+        ){
+            int seed = UnityEngine.Random.Range(0, Int32.MaxValue);
+            var job = new QueuedBeyerCycleMultiThreadJob {
+                fm = new FlowMaster {
+                    tile = new WorldTile {
+                        res = new int2(res, res),
+                        height = height,
+                        pool = pool,
+                        flow = flow,
+                        track = track
+                    },
+                    events = events,
+                    eventWriter = events.AsParallelWriter()
+                },
+                particles = particles.AsDeferredJobArray()
+            };
+            return job.Schedule<QueuedBeyerCycleMultiThreadJob, BeyerParticle>(particles, 1, deps);
         }
     }
 
@@ -134,37 +261,91 @@ namespace xshazwar.noize.geologic {
                     res = new int2(res, res)
                 }
             };
-            return job.ScheduleParallel(res, res, deps);
+            return job.ScheduleParallel(res, 1, deps);
         }
     }
+
+    // [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+    // public struct PoolAutomataJob: IJobFor {
+    //     WorldTile tile;
+    //     int res;
+    //     int xoff;
+    //     int zoff;
+
+    //     public void Execute (int z) {
+    //         NativeArray<FloodedNeighbor> buff = new NativeArray<FloodedNeighbor>(4, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+    //         int offset = xoff;
+    //         if(z % 2 != 0){
+    //             offset += 1;
+    //         }
+    //         z *= 2;
+    //         z += zoff;
+    //         for (int x = offset; x < res; x += 2){
+    //             if(tile.pool[tile.getIdx(x,z)] > 0f) {
+    //                 tile.SpreadPool(x, z, ref buff);
+    //             }
+    //         }
+    //     }
+
+    //     public static JobHandle Schedule(
+    //         NativeArray<float> pool,
+    //         NativeArray<float> height,
+    //         int iterations,
+    //         int res,
+    //         JobHandle deps
+    //     ){
+    //         JobHandle handle = deps;
+    //         var job = new PoolAutomataJob(){
+    //             res = res,
+    //             tile = new WorldTile {
+    //                 pool = pool,
+    //                 height = height,
+    //                 res = new int2(res, res)
+    //             }
+    //         };
+    //         for (int i = 0; i < iterations; i++){
+    //             for(int xoff = 0; xoff < 2; xoff++){
+    //                 for(int zoff = 0; zoff < 2; zoff ++){
+    //                     job.xoff = xoff;
+    //                     job.zoff = zoff;
+    //                     handle = job.ScheduleParallel(
+    //                         (int) (res / 2) , 1, handle
+    //                     );
+    //                 }  
+    //             }
+    //         }
+    //         return handle;
+    //     }
+    // }
 
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
     public struct PoolAutomataJob: IJobFor {
         WorldTile tile;
+        [NativeDisableContainerSafetyRestriction]
+        NativeQueue<BeyerParticle>.ParallelWriter particleWriter;
         int res;
-        int flip;
+        int xoff;
+        int zoff;
 
         public void Execute (int z) {
             NativeArray<FloodedNeighbor> buff = new NativeArray<FloodedNeighbor>(4, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-            int offset = 0;
-            z *= 2;
-            if(flip != 0){
-                z += 1;
-            }else{
-                offset = 1;
+            int offset = xoff;
+            if(z % 2 != 0){
+                offset += 1;
             }
-            // Debug.Log($"z{z} flip: {flip}, od {offset}");
+            z *= 2;
+            z += zoff;
             for (int x = offset; x < res; x += 2){
-                tile.SpreadPool(x, z, ref buff);
-                // if(tile.pool[tile.getIdx(x,z)] > 0f) {
-                    
-                // }
+                if(tile.pool[tile.getIdx(x,z)] > 0f) {
+                    tile.SpreadPool(x, z, ref buff, ref particleWriter);
+                }
             }
         }
 
         public static JobHandle Schedule(
             NativeArray<float> pool,
             NativeArray<float> height,
+            NativeQueue<BeyerParticle> particleQueue,
             int iterations,
             int res,
             JobHandle deps
@@ -172,6 +353,7 @@ namespace xshazwar.noize.geologic {
             JobHandle handle = deps;
             var job = new PoolAutomataJob(){
                 res = res,
+                particleWriter = particleQueue.AsParallelWriter(),
                 tile = new WorldTile {
                     pool = pool,
                     height = height,
@@ -179,11 +361,14 @@ namespace xshazwar.noize.geologic {
                 }
             };
             for (int i = 0; i < iterations; i++){
-                for(int flipflop = 0; flipflop <= 1; flipflop++){
-                    job.flip = flipflop;
-                    handle = job.ScheduleParallel(
-                        (int) (res / 2) , 10, handle
-                    );
+                for(int xoff = 0; xoff < 2; xoff++){
+                    for(int zoff = 0; zoff < 2; zoff ++){
+                        job.xoff = xoff;
+                        job.zoff = zoff;
+                        handle = job.ScheduleParallel(
+                            (int) (res / 2) , 1, handle
+                        );
+                    }  
                 }
             }
             return handle;

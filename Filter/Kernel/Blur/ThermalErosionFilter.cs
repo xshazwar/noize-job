@@ -39,49 +39,55 @@ namespace xshazwar.noize.filter.blur {
             return (z * resolution) + x;   
         }
 
+        // 4 step square
         public void rectifyNeighborhood(int x, int z){
-            int idx = getIdx(x, z);
-            rectify(idx, getIdx(x + 1, z));
-            rectify(idx, getIdx(x - 1, z));
-            rectify(idx, getIdx(x, z + 1));
-            rectify(idx, getIdx(x, z - 1));
+            int idx = (z * resolution) + x;
+            int idxr = getIdx(x + 1, z);
+            int idxd = getIdx(x, z + 1);
+            int idxdr = getIdx(x + 1, z + 1);
+            float v = data[idx];
+            float vr = data[idxr];
+            float vd = data[idxd];
+            float vdr = data[idxdr];
+            rectify(ref v, ref vr);
+            rectify(ref v, ref vd);
+            rectify(ref v, ref vdr);
+            rectify(ref vr, ref vd);
+            rectify(ref vr, ref vdr);
+            rectify(ref vd, ref vdr);
+            data[idx] = v;
+            data[idxr] = vr;
+            data[idxd] = vd;
+            data[idxdr] = vdr;
 
         }
 
-        public void rectify(int idxA, int idxB){
-            float va = data[idxA];
-            float vb = data[idxB];
+        public void rectify(ref float va, ref float vb){
             float diff = abs(va - vb);
-            // float angle = asin((diff / (1f/(float)resolution)) * heightRatio);  // opposite / adjacent >> can take into account tile scale in talus
             float angle = atan(diff / (1f / f_resolution));
-            float asdeg = angle * 180 / 3.14159f;
-            // Debug.Log($"{asdeg} {angle / talus}");
-
             if(angle > talus){
                 float excess = tan((angle - talus)) / f_resolution;
                 if(va > vb){
-                    vb += increment * excess;
-                    va -= increment * excess;
-                }else{
-                    va += increment * excess;
-                    vb -= increment * excess;
+                    vb += increment * 0.5f * excess;
+                    va -= increment * 0.5f * excess;
                 }
-                data[idxA] = va;
-                data[idxB] = vb;
+                else{
+                    va += increment * 0.5f * excess;
+                    vb -= increment * 0.5f * excess;
+                }
             }
         }
         
-
+        // 4 Step Square
         public void Execute (int z) {
             int offset = 0;
+            if(flip % 2 != 0){
+                offset += 1;
+            }
             z *= 2;
-            if(flip == 0){
-                offset = z % 2 == 0 ? 0 : 1;
-            }else{
-                offset = z % 2 == 0 ? 1 : 0;
+            if (flip > 1){
                 z += 1;
             }
-            // int offset = z % 2 == 0 ? 0 : 1;
             for (int x = offset; x < resolution; x += 2){
                 rectifyNeighborhood(x, z);
             }
@@ -106,10 +112,10 @@ namespace xshazwar.noize.filter.blur {
             job.heightRatio = meshHeightWidthRatio;
             job.talus = (talus / 90f) * 3.14159f/2f;
             for (int i = 0; i < iterations; i++){
-                for(int flipflop = 0; flipflop <= 1; flipflop++){
+                for(int flipflop = 0; flipflop < 4; flipflop++){
                     job.flip = flipflop;
                     handle = job.ScheduleParallel(
-                        (int) resolution / 2, 10, handle
+                        (int) resolution / 2, 1, handle
                     );
                 }
             }

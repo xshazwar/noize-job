@@ -1110,6 +1110,15 @@ namespace xshazwar.noize.geologic {
             return random.NextInt2(ZERO, MaxPos);
         }
 
+        public void CreateRandomParticles(int count, int seed, ref NativeQueue<BeyerParticle>.ParallelWriter particleWriter){
+            random = new Unity.Mathematics.Random((uint) seed);
+            for (int i = 0; i < count; i++){
+                particleWriter.Enqueue(
+                    new BeyerParticle(RandomPos(), false)
+                );
+            }
+        }
+
         // MultiThread
         public void ServiceParticle(ref Particle p, int seed, int maxSteps){
             random = new Unity.Mathematics.Random((uint) seed);
@@ -1137,6 +1146,8 @@ namespace xshazwar.noize.geologic {
             return step;
         }
 
+
+        // Small Particle Footprint
         public void BeyerSimultaneousDescent(
             ref BeyerParticle p,
             int seed,
@@ -1151,6 +1162,17 @@ namespace xshazwar.noize.geologic {
                 eventWriter.Enqueue(evt);
                 steps += 1;
             } while (steps < maxSteps);
+        }
+
+        // Larger Particle Footprint
+        public void BeyerSimultaneousDescentSingle(
+            ref BeyerParticle p
+        ){
+            ErosiveEvent evt;
+            while(!p.isDead){
+                p.DescendSimultaneous(ref tile, out evt);
+                eventWriter.Enqueue(evt);
+            }
         }
 
         // Single Thread
@@ -1253,14 +1275,15 @@ namespace xshazwar.noize.geologic {
             //     // tile.CascadeHeightMapChange(evt.idx);
             // }
             if(abs(evt.deltaPoolMap) > 0f){
-                Place(evt.idx, evt.deltaPoolMap, 1f, ref tile.pool);
+                Place(evt.idx, evt.deltaPoolMap, 10f, ref tile.pool);
             }
             if(abs(evt.deltaWaterTrack) > 0f){
                 // Debug.Log($"track delta {evt.deltaWaterTrack}");
                 // float v = tile.track[evt.idx];
                 // v += evt.deltaWaterTrack;
                 // tile.track[evt.idx] = v;
-                KernelDisperse(evt.idx, evt.deltaWaterTrack, 1f, ref tile.track, 3, ref kernel3);
+                // KernelDisperse(evt.idx, evt.deltaWaterTrack, 1f, ref tile.track, 3, ref kernel3);
+                Place(evt.idx, evt.deltaWaterTrack, 80f, ref tile.track);
             }
             if(abs(evt.deltaSediment) > 0f){
                 // DepositSediment(evt.idx, evt.deltaSediment);

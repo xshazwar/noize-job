@@ -54,6 +54,12 @@ namespace xshazwar.noize.geologic {
         public NativeArray<float> originalHeightMap {get; private set;}
         public NativeArray<float> heightMap {get; private set;}
         private NativeArray<BeyerParticle> beyerParticles;
+        // 
+        private int MAX_EVTS_PARTICLE = 100 + 2;
+        private int QUEUE_SIZE = 1000;
+        private NativeList<BeyerParticle> particles;
+        private NativeQueue<BeyerParticle> particleQueue;
+
         private NativeQueue<ErosiveEvent> events;
         
         // Ready Flags
@@ -73,7 +79,7 @@ namespace xshazwar.noize.geologic {
 
         const int PARTICLE_COUNT = 10; // maybe leave some overhead threads for other jobs to run during erosion? Remeshing comes to mind
         public int EVENT_LIMIT = 1500; // event limit per particle before intermediate results are calculated. Should align to a frame or second or something...?
-        public int Cycles = 10;
+        public int Cycles = 1;
 
         // Meshing
         private MeshBakery bakery;
@@ -185,11 +191,16 @@ namespace xshazwar.noize.geologic {
             originalHeightMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT"));
             heightMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT_COPY"), originalHeightMap.Length);
             ResetHeightMap();
-            // allocated by poolSolver
         
+            particles = stateManager.GetBuffer<BeyerParticle, NativeList<BeyerParticle>>(getBufferName("PARTERO_PARTICLE_QUEUE_MATERIALIZE"), QUEUE_SIZE);
+            particleQueue = stateManager.GetBuffer<BeyerParticle, NativeQueue<BeyerParticle>>(getBufferName("PARTERO_PARTICLE_QUEUE"), QUEUE_SIZE);
+            // 
             beyerParticles = stateManager.GetBuffer<BeyerParticle, NativeArray<BeyerParticle>>(getBufferName("PARTERO_PARTICLEBEYER_AGENT"), PARTICLE_COUNT, NativeArrayOptions.ClearMemory);
 
-            events = stateManager.GetBuffer<ErosiveEvent, NativeQueue<ErosiveEvent>>(getBufferName("PARTERO_EVT_EROSIVE"), EVENT_LIMIT * PARTICLE_COUNT);  // queue size is unrestricted, but we limit this in the job            
+            // events = stateManager.GetBuffer<ErosiveEvent, NativeQueue<ErosiveEvent>>(getBufferName("PARTERO_EVT_EROSIVE"), EVENT_LIMIT * PARTICLE_COUNT);  // queue size is unrestricted, but we limit this in the job            
+            // much larger event queue
+            events = stateManager.GetBuffer<ErosiveEvent, NativeQueue<ErosiveEvent>>(getBufferName("PARTERO_EVT_EROSIVE"), MAX_EVTS_PARTICLE * QUEUE_SIZE);  // queue size is unrestricted, but we limit this in the job            
+
             particleTrack = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_PARTICLE_TRACK"), generatorResolution * generatorResolution, NativeArrayOptions.ClearMemory);
             streamMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_STREAM"), generatorResolution * generatorResolution, NativeArrayOptions.ClearMemory);
             poolMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_POOL"), generatorResolution * generatorResolution, NativeArrayOptions.ClearMemory); // doesn't need clear
@@ -311,26 +322,30 @@ namespace xshazwar.noize.geologic {
             }else if((updateContinuous || updateSingle) && !erosionJobCtl.isRunning){
                 updateSingle = false;
                 // TriggerCycleBeyer();
-                TriggerCycleBeyerMT();
+                // TriggerCycleBeyerMT();
+                TriggerQueuedBeyerMT();
             }
             DrawWater();
         }
 
-        public void TriggerCycleBeyerMT(){
+        public void TriggerQueuedBeyerMT(){
             JobHandle handle = default;
             NativeSlice<float> heightSlice = new NativeSlice<float>(heightMap);
             NativeSlice<float> tmpSlice = new  NativeSlice<float>(tmp);
             for (int i = 0; i < Cycles; i++){
                 if(performErosion){
-                    handle = BeyerCycleMultiThreadJob.ScheduleParallel(heightMap, poolMap, streamMap, particleTrack, beyerParticles, events, EVENT_LIMIT, generatorResolution, handle);
-                    handle = ProcessBeyerErosiveEventsJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, events, generatorResolution, handle);
-                    
                     if(thermalErosion){
                         handle = ThermalErosionFilter.Schedule(heightSlice, talusAngle, thermalStepSize, 0.75f, thermalCyclesPerCycle, generatorResolution, handle);
                     }
+                    handle = FillBeyerQueueJob.ScheduleParallel(particleQueue, generatorResolution, QUEUE_SIZE, handle);
+                    handle = CopyBeyerQueueJob.ScheduleRun(particles, particleQueue, handle);
+                    handle = QueuedBeyerCycleMultiThreadJob.ScheduleParallel(heightMap, poolMap, streamMap, particleTrack, particles, events, EVENT_LIMIT, generatorResolution, handle);
+                    handle = JobHandle.CombineDependencies(
+                        ClearBeyerQueueJob.ScheduleRun(particleQueue, handle),
+                        ProcessBeyerErosiveEventsJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, events, generatorResolution, handle));
                 }
                 handle = UpdateFlowFromTrackJob.Schedule(poolMap, streamMap, particleTrack, generatorResolution, handle);
-                handle = PoolAutomataJob.Schedule(poolMap, heightMap, 10, generatorResolution, handle);
+                handle = PoolAutomataJob.Schedule(poolMap, heightMap, particleQueue, 1, generatorResolution, handle);
             }
             // handle = GaussFilter.Schedule(heightSlice, tmpSlice, 3, GaussSigma.s1d50, generatorResolution, handle);
             if(performErosion){
@@ -339,25 +354,47 @@ namespace xshazwar.noize.geologic {
             erosionJobCtl.TrackJob(handle);
         }
 
+        // public void TriggerCycleBeyerMT(){
+        //     JobHandle handle = default;
+        //     NativeSlice<float> heightSlice = new NativeSlice<float>(heightMap);
+        //     NativeSlice<float> tmpSlice = new  NativeSlice<float>(tmp);
+        //     for (int i = 0; i < Cycles; i++){
+        //         if(performErosion){
+        //             if(thermalErosion){
+        //                 handle = ThermalErosionFilter.Schedule(heightSlice, talusAngle, thermalStepSize, 0.75f, thermalCyclesPerCycle, generatorResolution, handle);
+        //             }
+        //             handle = BeyerCycleMultiThreadJob.ScheduleParallel(heightMap, poolMap, streamMap, particleTrack, beyerParticles, events, EVENT_LIMIT, generatorResolution, handle);
+        //             handle = ProcessBeyerErosiveEventsJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, events, generatorResolution, handle);
+        //         }
+        //         handle = UpdateFlowFromTrackJob.Schedule(poolMap, streamMap, particleTrack, generatorResolution, handle);
+        //         handle = PoolAutomataJob.Schedule(poolMap, heightMap, 10, generatorResolution, handle);
+        //     }
+        //     // handle = GaussFilter.Schedule(heightSlice, tmpSlice, 3, GaussSigma.s1d50, generatorResolution, handle);
+        //     if(performErosion){
+        //         handle = ScheduleMeshUpdate(handle);
+        //      }
+        //     erosionJobCtl.TrackJob(handle);
+        // }
 
-        public void TriggerCycleBeyer(){
-            JobHandle handle = default;
-            JobHandle cycle = default;
-            NativeSlice<float> heightSlice = new NativeSlice<float>(heightMap);
-            NativeSlice<float> tmpSlice = new  NativeSlice<float>(tmp);
-            for (int i = 0; i < Cycles; i++){
-                cycle = ErosionCycleBeyerParticleJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, beyerParticles, events, EVENT_LIMIT, generatorResolution, handle);
-                handle = UpdateFlowFromTrackJob.Schedule(poolMap, streamMap, particleTrack, generatorResolution, cycle);
-                if(thermalErosion){
-                    handle = ThermalErosionFilter.Schedule(heightSlice, talusAngle, thermalStepSize, 0.75f, thermalCyclesPerCycle, generatorResolution, handle);
-                }
-                // handle = ThermalErosionFilter.Schedule(new NativeSlice<float>(heightMap), .001f, 0.25f, 4, generatorResolution, handle);
-            }
-            // handle = ThermalErosionFilter.Schedule(new NativeSlice<float>(heightMap), 30f, 0.5f, .75f, 4, generatorResolution, handle);
-            handle = GaussFilter.Schedule(heightSlice, tmpSlice, 5, GaussSigma.s0d50, generatorResolution, handle);
-            handle = ScheduleMeshUpdate(handle);
-            erosionJobCtl.TrackJob(handle);
-        }
+
+        // public void TriggerCycleBeyer(){
+        //     JobHandle handle = default;
+        //     JobHandle cycle = default;
+        //     NativeSlice<float> heightSlice = new NativeSlice<float>(heightMap);
+        //     NativeSlice<float> tmpSlice = new  NativeSlice<float>(tmp);
+        //     for (int i = 0; i < Cycles; i++){
+        //         cycle = ErosionCycleBeyerParticleJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, beyerParticles, events, EVENT_LIMIT, generatorResolution, handle);
+        //         handle = UpdateFlowFromTrackJob.Schedule(poolMap, streamMap, particleTrack, generatorResolution, cycle);
+        //         if(thermalErosion){
+        //             handle = ThermalErosionFilter.Schedule(heightSlice, talusAngle, thermalStepSize, 0.75f, thermalCyclesPerCycle, generatorResolution, handle);
+        //         }
+        //         // handle = ThermalErosionFilter.Schedule(new NativeSlice<float>(heightMap), .001f, 0.25f, 4, generatorResolution, handle);
+        //     }
+        //     // handle = ThermalErosionFilter.Schedule(new NativeSlice<float>(heightMap), 30f, 0.5f, .75f, 4, generatorResolution, handle);
+        //     handle = GaussFilter.Schedule(heightSlice, tmpSlice, 5, GaussSigma.s0d50, generatorResolution, handle);
+        //     handle = ScheduleMeshUpdate(handle);
+        //     erosionJobCtl.TrackJob(handle);
+        // }
 
         public void DrawWater(){
             Graphics.DrawMeshInstancedIndirect(waterMesh, 0, poolMaterial, bounds, argsBuffer, 0, poolMatProps);

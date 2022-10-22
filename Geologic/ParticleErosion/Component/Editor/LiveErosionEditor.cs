@@ -18,6 +18,7 @@ namespace xshazwar.noize.editor {
         SerializedProperty reset;
         SerializedProperty showMap;
         SerializedProperty performErosion;
+        SerializedProperty erosionCycles;
         Texture2D texture;
 
         void OnEnable(){
@@ -31,12 +32,14 @@ namespace xshazwar.noize.editor {
             reset = serializedObject.FindProperty("resetLand");
             showMap = serializedObject.FindProperty("showMap");
             performErosion = serializedObject.FindProperty("performErosion");
+            erosionCycles = serializedObject.FindProperty("Cycles");
             texture = tex2d.objectReferenceValue as Texture2D;
         }
 
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
+            EditorGUILayout.PropertyField(erosionCycles);
             EditorGUILayout.PropertyField(reset);
             EditorGUILayout.PropertyField(thermalErosion);
             EditorGUILayout.PropertyField(talusAngle);
