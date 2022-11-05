@@ -1098,8 +1098,8 @@
 //     //     private Unity.Mathematics.Random random;
 //     //     static readonly int2 ZERO = new int2(0,0);
 
-//     //     public static readonly float POOL_PLACEMENT_DIVISOR = 10f;
-//     //     public static readonly float TRACK_PLACEMENT_DIVISOR = 80f;
+//     //     public static readonly float POOL_PLACEMENT_MULTIPLIER = 10f;
+//     //     public static readonly float TRACK_PLACEMENT_MULTIPLIER = 80f;
 
 //     //     public static readonly float[] KERNEL3 = new float[] { 0.30780132912347f, 0.38439734175306006f, 0.30780132912347f };
 //     //     public static readonly float[] KERNEL5 = new float[] { 0.12007838424321349f, 0.23388075658535032f, 0.29208171834287244f, 0.23388075658535032f, 0.12007838424321349f };
@@ -1278,7 +1278,7 @@
 //     //         //     // tile.CascadeHeightMapChange(evt.idx);
 //     //         // }
 //     //         if(abs(evt.deltaPoolMap) > 0f){
-//     //             Place(evt.idx, evt.deltaPoolMap, POOL_PLACEMENT_DIVISOR, ref tile.pool);
+//     //             Place(evt.idx, evt.deltaPoolMap, POOL_PLACEMENT_MULTIPLIER, ref tile.pool);
 //     //         }
 //     //         if(abs(evt.deltaWaterTrack) > 0f){
 //     //             // Debug.Log($"track delta {evt.deltaWaterTrack}");
@@ -1286,7 +1286,7 @@
 //     //             // v += evt.deltaWaterTrack;
 //     //             // tile.track[evt.idx] = v;
 //     //             // KernelDisperse(evt.idx, evt.deltaWaterTrack, 1f, ref tile.track, 3, ref kernel3);
-//     //             Place(evt.idx, evt.deltaWaterTrack, TRACK_PLACEMENT_DIVISOR, ref tile.track);
+//     //             Place(evt.idx, evt.deltaWaterTrack, TRACK_PLACEMENT_MULTIPLIER, ref tile.track);
 //     //         }
 //     //         if(abs(evt.deltaSediment) > 0f){
 //     //             // DepositSediment(evt.idx, evt.deltaSediment);

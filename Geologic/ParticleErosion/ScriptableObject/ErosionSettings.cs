@@ -3,10 +3,11 @@ using UnityEngine;
 namespace xshazwar.noize.geologic {
     [CreateAssetMenu(fileName = "ErosionSettings", menuName = "Noize/ScriptableObjects/ErosionSettings", order = 2)]
     public class ErosionSettings : ScriptableObject {
-        
+
         [Header("Particle Cycle")]
         public int CYCLES;
         public int PARTICLES_PER_CYCLE;
+        public ErosionMode BEHAVIOR;
         
         [Space(10)]
         [Header("Particle Behavior")]
@@ -29,8 +30,8 @@ namespace xshazwar.noize.geologic {
         
         [Space(10)]
         public float SURFACE_EVAPORATION_RATE;
-        public float POOL_PLACEMENT_DIVISOR;
-        public float TRACK_PLACEMENT_DIVISOR;
+        public float POOL_PLACEMENT_MULTIPLIER;
+        public float TRACK_PLACEMENT_MULTIPLIER;
         
         [Space(10)]
         [Header("Deposition Behavior")]
@@ -48,7 +49,8 @@ namespace xshazwar.noize.geologic {
         void Reset()
         {
             CYCLES = 3;
-            PARTICLES_PER_CYCLE = 100;
+            PARTICLES_PER_CYCLE = 1000;
+            BEHAVIOR = ErosionMode.ALL_EROSION;
             
             INERTIA = 0.5f;
             GRAVITY = 1f;
@@ -64,8 +66,8 @@ namespace xshazwar.noize.geologic {
 
             WATER_STEPS = 10;
             SURFACE_EVAPORATION_RATE = 0.1f;
-            POOL_PLACEMENT_DIVISOR = 0.5f;
-            TRACK_PLACEMENT_DIVISOR = 80f;
+            POOL_PLACEMENT_MULTIPLIER = 0.5f;
+            TRACK_PLACEMENT_MULTIPLIER = 80f;
 
             PILING_RADIUS = 15;
             MIN_PILE_INCREMENT = 1f;
@@ -89,12 +91,12 @@ namespace xshazwar.noize.geologic {
                 DEPOSITION = this.DEPOSITION,
                 SLOW_CULL_ANGLE = this.SLOW_CULL_ANGLE,
                 SLOW_CULL_SPEED = this.SLOW_CULL_SPEED,
-                CAPACITY = this.CAPACITY,
+                CAPACITY = BEHAVIOR == ErosionMode.ALL_EROSION ? this.CAPACITY: 0,
                 MAXAGE = this.MAXAGE,
 
                 SURFACE_EVAPORATION_RATE = this.SURFACE_EVAPORATION_RATE,
-                POOL_PLACEMENT_DIVISOR = this.POOL_PLACEMENT_DIVISOR,
-                TRACK_PLACEMENT_DIVISOR = this.TRACK_PLACEMENT_DIVISOR,
+                POOL_PLACEMENT_MULTIPLIER = BEHAVIOR == ErosionMode.ONLY_THERMAL_EROSION ? 0f : this.POOL_PLACEMENT_MULTIPLIER,
+                TRACK_PLACEMENT_MULTIPLIER = this.TRACK_PLACEMENT_MULTIPLIER,
 
                 PILING_RADIUS = this.PILING_RADIUS,
                 MIN_PILE_INCREMENT = this.MIN_PILE_INCREMENT,

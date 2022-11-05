@@ -38,8 +38,8 @@ namespace xshazwar.noize.geologic {
         private Unity.Mathematics.Random random;
         static readonly int2 ZERO = new int2(0,0);
 
-        // public static readonly float POOL_PLACEMENT_DIVISOR = 0.5f;
-        // public static readonly float TRACK_PLACEMENT_DIVISOR = 80f;
+        // public static readonly float POOL_PLACEMENT_MULTIPLIER = 0.5f;
+        // public static readonly float TRACK_PLACEMENT_MULTIPLIER = 80f;
 
         public static readonly float SEDIMENT_PLACEMENT_DIVISOR = 1f;
         
@@ -81,34 +81,6 @@ namespace xshazwar.noize.geologic {
             }
         }
 
-
-
-        // public void HandleBeyerEvent(ref ErosiveEvent evt, ref NativeParallelHashMap<int, ErosiveEvent> erosions, ref NativeArray<float> kernel, ref float deposit){
-        //     if(abs(evt.deltaPoolMap) > 0f){
-        //         Place(evt.idx, evt.deltaPoolMap, (tile.ep.POOL_PLACEMENT_DIVISOR / tile.ep.CAPACITY), ref tile.pool);
-        //     }
-        //     if(abs(evt.deltaWaterTrack) > 0f){
-        //         Place(evt.idx, evt.deltaWaterTrack, tile.ep.TRACK_PLACEMENT_DIVISOR, ref tile.track);
-        //     }
-        //     if(abs(evt.deltaSediment) > 0f){
-        //         if(evt.deltaSediment < 0f){
-        //             KernelDisperse(evt.idx, evt.deltaSediment, SEDIMENT_PLACEMENT_DIVISOR, ref tile.height, 3, ref kernel);
-        //         }else{
-        //             // Consolidate for Piles
-        //             if(!erosions.ContainsKey(evt.idx)){
-        //                 erosions.Add(evt.idx, evt);
-        //             }else{
-        //                 deposit += evt.deltaSediment;
-        //                 float diff = evt.deltaSediment;
-        //                 erosions.TryGetValue(evt.idx, out evt);
-        //                 evt.deltaSediment += diff;
-        //                 erosions.Remove(evt.idx);
-        //                 erosions.Add(evt.idx, evt);
-        //             }
-        //         }
-        //     }
-        // }
-
         public void CombineBeyerEvents(ErosiveEvent evt, ref float poolV, ref float trackV, ref float sedimentV){
             poolV += evt.deltaPoolMap;
             trackV += evt.deltaWaterTrack;
@@ -117,10 +89,10 @@ namespace xshazwar.noize.geologic {
 
         public void HandleBeyerEvent(int idx, float poolV, float trackV, float sedimentV, ref NativeQueue<ErosiveEvent>.ParallelWriter erosionWriter){
             if(abs(poolV) > 0f){
-                Place(idx, poolV, (tile.ep.POOL_PLACEMENT_DIVISOR / tile.ep.CAPACITY), ref tile.pool);
+                Place(idx, poolV, (tile.ep.POOL_PLACEMENT_MULTIPLIER), ref tile.pool);
             }
             if(abs(trackV) > 0f){
-                Place(idx, trackV, tile.ep.TRACK_PLACEMENT_DIVISOR, ref tile.track);
+                Place(idx, trackV, tile.ep.TRACK_PLACEMENT_MULTIPLIER, ref tile.track);
             }
             erosionWriter.Enqueue(new ErosiveEvent {
                 idx = idx,
@@ -147,40 +119,6 @@ namespace xshazwar.noize.geologic {
             } 
         }
 
-        public void Settle(int idx, Heading heading, ref NativeArray<float> buffer, int kernelSize, ref NativeArray<float> kernel){
-            // since we don't settle everywhere, this does NOT conserve mass
-            int offset = (int)floor(kernelSize / 2);
-            float val = 0f;
-            int2 posD = tile.getPos(idx);
-            // heading.Orthogonal(out oa, out ob);
-            int xi;
-            int zi;
-            for (int x = 0; x < kernelSize; x++){
-                xi = -offset + x;
-                for (int z = 0; z < kernelSize; z++){
-                    zi = -offset + z;
-                    val += buffer[tile.SafeIdx(posD.x + xi, posD.y + zi)] * kernel[x] * kernel[z];
-                }    
-            }
-            buffer[idx] = val;
-
-            // for(int i = 0; i <= offset; i++){
-            //     kernelFactor = kernel[offset + i];
-            //     int flipMax = i == 0 ? 1 : 2;
-            //     for (int flip = 0; flip < flipMax; flip++){
-            //         if(flip == 0){
-            //             probe = posD + (oa * i);
-            //         }else{
-            //             probe = posD + (ob * i);
-            //         }
-            //         probeidx = tile.SafeIdx(probe);
-            //         last = buffer[probeidx];
-            //         val += (last * kernelFactor);
-            //     }
-            // }
-            
-        }
-
         public void KernelDisperse(int idx, float val, float scalingFactor, ref NativeArray<float> buffer, int kernelSize, ref NativeArray<float> kernel){
             float offset = floor((float) kernelSize / 2f);
             float2 posD = new float2(tile.getPos(idx));
@@ -203,37 +141,37 @@ namespace xshazwar.noize.geologic {
             }
         }
 
-        public void KernelDisperse(int idx, float val, Heading heading, float scalingFactor, ref NativeArray<float> buffer, int kernelSize, ref NativeArray<float> kernel){
-            int offset = (int)floor(kernelSize / 2);
-            int2 posD = tile.getPos(idx);
-            int2 oa;
-            int2 ob;
-            int2 probe;
-            heading.Orthogonal(out oa, out ob);
-            float kernelFactor = kernel[offset];
-            float last = buffer[idx];
-            float diff = (val * kernelFactor) / scalingFactor;
-            // float nextV = last + diff
-            buffer[idx] = last + diff;
-            for(int i = 1; i <= offset; i++){
-                kernelFactor = kernel[offset + i];
-                for (int flip = 0; flip < 2; flip++){
-                    if(flip == 0){
-                        probe = posD + (oa * i);
-                    }else{
-                        probe = posD + (ob * i);
-                    }
-                    idx = tile.SafeIdx(probe);
-                    last = buffer[idx];
-                    diff = (val * kernelFactor) / scalingFactor;
-                    buffer[idx] = last + diff;
-                }
-            }
-        }
+        // public void KernelDisperse(int idx, float val, Heading heading, float scalingFactor, ref NativeArray<float> buffer, int kernelSize, ref NativeArray<float> kernel){
+        //     int offset = (int)floor(kernelSize / 2);
+        //     int2 posD = tile.getPos(idx);
+        //     int2 oa;
+        //     int2 ob;
+        //     int2 probe;
+        //     heading.Orthogonal(out oa, out ob);
+        //     float kernelFactor = kernel[offset];
+        //     float last = buffer[idx];
+        //     float diff = (val * kernelFactor) / scalingFactor;
+        //     // float nextV = last + diff
+        //     buffer[idx] = last + diff;
+        //     for(int i = 1; i <= offset; i++){
+        //         kernelFactor = kernel[offset + i];
+        //         for (int flip = 0; flip < 2; flip++){
+        //             if(flip == 0){
+        //                 probe = posD + (oa * i);
+        //             }else{
+        //                 probe = posD + (ob * i);
+        //             }
+        //             idx = tile.SafeIdx(probe);
+        //             last = buffer[idx];
+        //             diff = (val * kernelFactor) / scalingFactor;
+        //             buffer[idx] = last + diff;
+        //         }
+        //     }
+        // }
 
         public void Place(int idx, float val, float scalingFactor, ref NativeArray<float> buffer){
             float last = buffer[idx];
-            last += val / scalingFactor;
+            last += val * scalingFactor;
             buffer[idx] = last;
         }
     }

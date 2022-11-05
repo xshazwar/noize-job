@@ -31,7 +31,7 @@ namespace xshazwar.noize.filter.blur {
         int resolution;
         float f_resolution;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        // [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int getIdx(int x, int z){
             // overflows safely
             x = clamp(x, 0, resolution - 1);
@@ -39,57 +39,100 @@ namespace xshazwar.noize.filter.blur {
             return (z * resolution) + x;   
         }
 
-        // 4 step square
-        public void rectifyNeighborhood(int x, int z){
-            int idx = (z * resolution) + x;
-            int idxr = getIdx(x + 1, z);
-            int idxd = getIdx(x, z + 1);
-            int idxdr = getIdx(x + 1, z + 1);
-            float v = data[idx];
-            float vr = data[idxr];
-            float vd = data[idxd];
-            float vdr = data[idxdr];
-            rectify(ref v, ref vr);
-            rectify(ref v, ref vd);
-            rectify(ref v, ref vdr);
-            rectify(ref vr, ref vd);
-            rectify(ref vr, ref vdr);
-            rectify(ref vd, ref vdr);
-            data[idx] = v;
-            data[idxr] = vr;
-            data[idxd] = vd;
-            data[idxdr] = vdr;
-
+        public int4 idxNeighborhood(int x, int z){
+            return new int4(
+                (z * resolution) + x,
+                getIdx(x + 1, z),
+                getIdx(x, z + 1),
+                getIdx(x + 1, z + 1)
+            );
         }
 
-        public void rectify(ref float va, ref float vb){
-            float diff = abs(va - vb);
+        public float4 collectNeighborhood(int4 idx){
+            return new float4(
+                data[idx.x],
+                data[idx.y],
+                data[idx.z],
+                data[idx.w]
+            );
+        }
+
+        public void setNeighborhood(int4 idx, float4 val){
+            data[idx.x] = val.x;
+            data[idx.y] = val.y;
+            data[idx.z] = val.z;
+            data[idx.w] = val.w;
+        }
+
+        // // 4 step square
+        // public rectifyNeighborhood(float4 val){
+        //     int idx = (z * resolution) + x;
+        //     int idxr = getIdx(x + 1, z);
+        //     int idxd = getIdx(x, z + 1);
+        //     int idxdr = getIdx(x + 1, z + 1);
+        //     float v = data[idx];
+        //     float vr = data[idxr];
+        //     float vd = data[idxd];
+        //     float vdr = data[idxdr];
+        //     rectify(ref v, ref vr);
+        //     rectify(ref v, ref vd);
+        //     rectify(ref v, ref vdr);
+        //     rectify(ref vr, ref vd);
+        //     rectify(ref vr, ref vdr);
+        //     rectify(ref vd, ref vdr);
+        //     data[idx] = v;
+        //     data[idxr] = vr;
+        //     data[idxd] = vd;
+        //     data[idxdr] = vdr;
+        // }
+
+        // 4 step square
+        public void rectifyNeighborhood(ref float4 v){
+            v.xy = rectify(v.xy);
+            v.xz = rectify(v.xz);
+            v.xw = rectify(v.xw);
+            v.yz = rectify(v.yz);
+            v.yw = rectify(v.yw);
+            v.zw = rectify(v.zw);
+        }
+
+        // [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float2 rectify(float2 v){
+            float diff = abs(v.x - v.y);
             float angle = atan(diff / (1f / f_resolution));
             if(angle > talus){
                 float excess = tan((angle - talus)) / f_resolution;
-                if(va > vb){
-                    vb += increment * 0.5f * excess;
-                    va -= increment * 0.5f * excess;
+                if(v.x > v.y){
+                    v.y += increment * 0.5f * excess;
+                    v.x -= increment * 0.5f * excess;
                 }
                 else{
-                    va += increment * 0.5f * excess;
-                    vb -= increment * 0.5f * excess;
+                    v.x += increment * 0.5f * excess;
+                    v.y -= increment * 0.5f * excess;
                 }
             }
+            return v;
         }
         
         // 4 Step Square
         public void Execute (int z) {
-            int offset = 0;
+            int offset = 1;
+            z += 1;
             if(flip % 2 != 0){
                 offset += 1;
             }
             z *= 2;
             if (flip > 1){
-                z += 1;
+                z -= 1;
             }
-            for (int x = offset; x < resolution; x += 2){
-                rectifyNeighborhood(x, z);
+            float4 val;
+            int x = offset;
+            int4 idx = idxNeighborhood(x, z);
+            while(x < resolution - 1){
+                val = collectNeighborhood(idx);
+                rectifyNeighborhood(ref val);
+                setNeighborhood(idx, val);
+                x+=2; idx +=2;
             }
         }
 
@@ -115,7 +158,7 @@ namespace xshazwar.noize.filter.blur {
                 for(int flipflop = 0; flipflop < 4; flipflop++){
                     job.flip = flipflop;
                     handle = job.ScheduleParallel(
-                        (int) resolution / 2, 1, handle
+                        ((int) resolution / 2) - 1, 32, handle
                     );
                 }
             }

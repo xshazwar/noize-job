@@ -24,6 +24,13 @@ using xshazwar.noize.filter;
 namespace xshazwar.noize.geologic {
     using Unity.Mathematics;
 
+    public enum ErosionMode {
+        ALL_EROSION,
+        ONLY_THERMAL_EROSION,
+        THERMAL_FLOW_WATER,
+        ONLY_FLOW_WATER
+    }
+
     // Erosive Events
     public struct ErosiveEvent : IEquatable<ErosiveEvent> {
         public int idx; // the tile space idx affected
@@ -67,8 +74,8 @@ namespace xshazwar.noize.geologic {
         public float TERMINAL_VELOCITY;
 
         public float SURFACE_EVAPORATION_RATE;
-        public float POOL_PLACEMENT_DIVISOR;
-        public float TRACK_PLACEMENT_DIVISOR;
+        public float POOL_PLACEMENT_MULTIPLIER;
+        public float TRACK_PLACEMENT_MULTIPLIER;
 
         public int PILING_RADIUS;
         public float MIN_PILE_INCREMENT;
@@ -94,8 +101,8 @@ namespace xshazwar.noize.geologic {
             TERMINAL_VELOCITY = 1 / DRAG; // vel = DRAG * pow(vel, 2)
 
             SURFACE_EVAPORATION_RATE = 0.1f;
-            POOL_PLACEMENT_DIVISOR = 0.5f;
-            TRACK_PLACEMENT_DIVISOR = 80f;
+            POOL_PLACEMENT_MULTIPLIER = 0.5f;
+            TRACK_PLACEMENT_MULTIPLIER = 80f;
 
             PILING_RADIUS = 15;
             MIN_PILE_INCREMENT = 1f;
@@ -208,24 +215,6 @@ namespace xshazwar.noize.geologic {
                 evt.deltaSediment = sediment / ep.HEIGHT;
                 return false;
             }
-            // if(tile.StandingWater(pos)){
-            //     float drop = 0.25f * sediment;
-            //     evt.deltaSediment += (drop / ep.HEIGHT);
-            //     sediment -= drop;
-            // }
-            // if( age > 10 && cmin(vhist) < .1f){
-            //     // Debug.Log($"{pid} dead from slow speed {age}");
-            //     evt.deltaPoolMap += water / ep.HEIGHT;
-            //     evt.deltaSediment += sediment / ep.HEIGHT;
-            //     isDead = true;
-            //     return false;
-            // }
-            // if(vel <= 0f){
-            //     evt.deltaPoolMap = water / ep.HEIGHT;
-            //     evt.deltaSediment = sediment / ep.HEIGHT;
-            //     isDead = true;
-            //     return false;
-            // }
             float2 posN = nextPos(ref tile);    
             evt.dir = HeadingExt.FromFloat2(dir);
 
@@ -279,11 +268,6 @@ namespace xshazwar.noize.geologic {
             }
             if(abs(depositionAmount) > 0f){
                 evt.deltaSediment += depositionAmount / ep.HEIGHT;
-                // if(depositionAmount > 0f){
-                //     Debug.Log($"{pid} v:{vel}, w:{water}, sed:{sediment} // cap:{currentCapacity} >> D:{evt.deltaSediment}");
-                // }else{
-                //     Debug.Log($"{pid} v:{vel}, w:{water}, sed:{sediment} // cap:{currentCapacity} >> E:{evt.deltaSediment}");
-                // }
                 sediment -= depositionAmount;
             }
             evt.deltaWaterTrack = water;

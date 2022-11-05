@@ -143,7 +143,11 @@ namespace xshazwar.noize.geologic {
         NativeParallelMultiHashMap<K, V> dict;
 
         public void Execute(){
+            int dSize = dict.Count();
+            Debug.LogWarning($"dictionary size utilization? {dSize}");
             dict.Clear();
+            dSize = dict.Count();
+            Debug.LogWarning($"dictionary size utilization >> {dSize}");
         }
 
         public static JobHandle ScheduleRun(

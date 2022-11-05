@@ -50,14 +50,13 @@ namespace xshazwar.noize.geologic {
         // Data
         
         private NativeArray<float> debugViz;
-        // private NativeArray<float> tmp;
         public NativeArray<float> poolMap {get; private set;}
         public NativeArray<float> streamMap {get; private set;}
         public NativeArray<float> particleTrack;
         public NativeArray<float> originalHeightMap {get; private set;}
         public NativeArray<float> heightMap {get; private set;}
         // 
-        private int MAX_EVTS_PARTICLE = 100 + 2;
+        private int MAX_EVTS_PARTICLE = 0;
         private int QUEUE_SIZE = 0;
 
         private NativeList<BeyerParticle> particles;
@@ -194,6 +193,8 @@ namespace xshazwar.noize.geologic {
             ResetHeightMap();
 
             QUEUE_SIZE = erosionSettings.PARTICLES_PER_CYCLE;
+            MAX_EVTS_PARTICLE = erosionSettings.MAXAGE;
+            Debug.LogWarning($"particle event queue size {QUEUE_SIZE * MAX_EVTS_PARTICLE * 2}");
             particles = stateManager.GetBuffer<BeyerParticle, NativeList<BeyerParticle>>(getBufferName("PARTERO_PARTICLE_QUEUE_MATERIALIZE"), QUEUE_SIZE);
             particleQueue = stateManager.GetBuffer<BeyerParticle, NativeQueue<BeyerParticle>>(getBufferName("PARTERO_PARTICLE_QUEUE"), QUEUE_SIZE);
             // 
@@ -336,7 +337,7 @@ namespace xshazwar.noize.geologic {
             ErosionParameters erosionParams = erosionSettings.AsParameters(generatorResolution, generatorResolution, tileHeight, tileSize);
             if(performErosion){
                 for (int i = 0; i < erosionSettings.CYCLES; i++){
-                    if(erosionSettings.ENABLE_THERMAL){
+                    if(erosionSettings.ENABLE_THERMAL && erosionSettings.BEHAVIOR != ErosionMode.ONLY_FLOW_WATER){
                         handle = ThermalErosionFilter.Schedule(heightSlice, erosionSettings.TALUS, erosionSettings.THERMAL_STEP, tileSize / tileHeight, erosionSettings.THERMAL_CYCLES, generatorResolution, handle);
                     }
                     handle = JobHandle.CombineDependencies(
