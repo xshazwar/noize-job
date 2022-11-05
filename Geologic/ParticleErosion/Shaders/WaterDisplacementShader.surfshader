@@ -9,6 +9,7 @@ END_OPTIONS
 BEGIN_PROPERTIES
    [NoScaleOffset]_Albedo ("Albedo", 2D) = "white" {}
    [Normal][NoScaleOffset]_Normal ("Normal", 2D) = "bump" {}
+   _DrawThreshold("Water Threshold", Range(.00000000001, .001)) = .00001
    // [NoScaleOffset]_height_Map ("Height Map", 2D) = "black" {}
    // _DisplacementAmount("Displacement Amount", Range(0,2)) = 0.5
    // _DisplacementMipBias("Displacement Mip Bias", Range(0,6)) = 2
@@ -30,6 +31,7 @@ BEGIN_CBUFFER
    float _Mesh_Res;
    float _Data_Res;
    float _Mesh_Size;
+   float _DrawThreshold;
    StructuredBuffer<float> _TerrainValues;
    StructuredBuffer<float> _WaterValues;
 END_CBUFFER
@@ -45,7 +47,7 @@ BEGIN_CODE
    int DEAD;
    float MESH_RATIO;
    float4 _CameraDepthTexture_TexelSize;
-   const float MIN_WATER = .00000000001;
+   // const float MIN_WATER = .00000000001;
    const float NAN = sqrt(-1);
 
    
@@ -69,7 +71,8 @@ BEGIN_CODE
    }
 
    bool HasWater(int x, int z){
-      return _WaterValues[Idx(x, z)] > MIN_WATER;
+      // return _WaterValues[Idx(x, z)] > MIN_WATER;
+      return _WaterValues[Idx(x, z)] > _DrawThreshold;
    }
    
    void AreaWater(int x, int z, inout bool neighborsWater, inout float maxNeigborTH, inout float minDryNeighborHeight){
@@ -86,10 +89,10 @@ BEGIN_CODE
             zt = z + zi;
             neighborwater = _WaterValues[Idx(xt, zt)];
             neighbordry = _TerrainValues[Idx(xt, zt)];
-            minDryNeighborHeight = neighborwater < MIN_WATER ? min(minDryNeighborHeight, neighbordry) : minDryNeighborHeight;
+            minDryNeighborHeight = neighborwater < _DrawThreshold ? min(minDryNeighborHeight, neighbordry) : minDryNeighborHeight;
             neighborTH = neighborwater + neighbordry;
-            neighborsWater =  neighborwater > MIN_WATER || neighborsWater;
-            maxNeigborTH = neighborwater > MIN_WATER ? max(maxNeigborTH, neighborTH): maxNeigborTH;
+            neighborsWater =  neighborwater > _DrawThreshold || neighborsWater;
+            maxNeigborTH = neighborwater > _DrawThreshold ? max(maxNeigborTH, neighborTH): maxNeigborTH;
          }
       }
       return;

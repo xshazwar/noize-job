@@ -50,7 +50,9 @@ namespace xshazwar.noize.filter {
             inputData.data = new GeneratorData {
                 uuid = d.uuid,
                 resolution = d.resolution,
-                data  = d.data 
+                data  = d.data,
+                xpos = d.xpos,
+                zpos = d.zpos
             };
         }
 

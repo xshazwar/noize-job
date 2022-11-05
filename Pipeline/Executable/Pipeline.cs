@@ -91,7 +91,8 @@ namespace xshazwar.noize.pipeline {
         public void Schedule(StageIO input,
                 Action<StageIO, JobHandle> scheduleAction = null,
                 Action<StageIO> completeAction = null,
-                JobHandle dependency = default(JobHandle)){
+                JobHandle dependency = default(JobHandle)
+        ){
             Schedule(new PipelineWorkItem {
                 data = input,
                 scheduledAction = scheduleAction,

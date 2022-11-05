@@ -11,51 +11,52 @@ namespace xshazwar.noize.editor {
         SerializedProperty tex2d;
         SerializedProperty updateContinuous;
         SerializedProperty updateSingle;
-        SerializedProperty talusAngle;
-        SerializedProperty thermalStepSize;
-        SerializedProperty thermalCyclesPerCycle;
-        SerializedProperty thermalErosion;
-        SerializedProperty reset;
+        SerializedProperty resetLand;
+        SerializedProperty resetWater;
         SerializedProperty showMap;
         SerializedProperty performErosion;
-        SerializedProperty erosionCycles;
+        SerializedProperty erosionSettings;
+        SerializedProperty updateTexture;
+        SerializedProperty drawPools;
         Texture2D texture;
 
         void OnEnable(){
             tex2d = serializedObject.FindProperty("texture");
             updateContinuous = serializedObject.FindProperty("updateContinuous");
             updateSingle = serializedObject.FindProperty("updateSingle");
-            talusAngle = serializedObject.FindProperty("talusAngle");
-            thermalStepSize = serializedObject.FindProperty("thermalStepSize");
-            thermalCyclesPerCycle = serializedObject.FindProperty("thermalCyclesPerCycle");
-            thermalErosion = serializedObject.FindProperty("thermalErosion");
-            reset = serializedObject.FindProperty("resetLand");
+            resetLand = serializedObject.FindProperty("resetLand");
+            resetWater = serializedObject.FindProperty("resetWater");
             showMap = serializedObject.FindProperty("showMap");
             performErosion = serializedObject.FindProperty("performErosion");
-            erosionCycles = serializedObject.FindProperty("Cycles");
+            erosionSettings = serializedObject.FindProperty("erosionSettings");
+            updateTexture = serializedObject.FindProperty("updateTexture");
+            drawPools = serializedObject.FindProperty("drawPools");
+            
             texture = tex2d.objectReferenceValue as Texture2D;
         }
 
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
-            EditorGUILayout.PropertyField(erosionCycles);
-            EditorGUILayout.PropertyField(reset);
-            EditorGUILayout.PropertyField(thermalErosion);
-            EditorGUILayout.PropertyField(talusAngle);
-            EditorGUILayout.PropertyField(thermalStepSize);
-            EditorGUILayout.PropertyField(thermalCyclesPerCycle);
-            EditorGUILayout.PropertyField(updateContinuous);
-            EditorGUILayout.PropertyField(updateSingle);
-            EditorGUILayout.PropertyField(showMap);
-            EditorGUILayout.PropertyField(performErosion);
+            EditorGUILayout.PropertyField(resetLand);
+            EditorGUILayout.PropertyField(resetWater);
+
+            EditorGUILayout.PropertyField(drawPools);
+            EditorGUILayout.PropertyField(erosionSettings);
             // this is cheesy but it works
             // sticking the texture into a label didn't
-            Rect space = EditorGUILayout.BeginHorizontal();
-            EditorGUI.DrawPreviewTexture(space, texture);
-            EditorGUILayout.TextArea("", GUIStyle.none, GUILayout.Height(1024));
-            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.PropertyField(updateTexture);
             
+            EditorGUILayout.PropertyField(performErosion);
+            EditorGUILayout.PropertyField(updateSingle);
+            EditorGUILayout.PropertyField(updateContinuous);
+            if((bool)updateTexture.boolValue){
+                EditorGUILayout.PropertyField(showMap);
+                Rect space = EditorGUILayout.BeginHorizontal();
+                EditorGUI.DrawPreviewTexture(space, texture);
+                EditorGUILayout.TextArea("", GUIStyle.none, GUILayout.Height(1024));
+                EditorGUILayout.EndHorizontal();
+            }
             serializedObject.ApplyModifiedProperties();
         }
     }

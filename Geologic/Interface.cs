@@ -37,39 +37,39 @@ namespace xshazwar.noize.geologic {
             where  WO : struct, IWriteOnlyTile;
     }
 
-    // Particle Erosion
+    // // Particle Erosion
 
-    public interface IPoolSuperPosition {
-        void CreateSuperPositions(int z, NativeStream.Writer minimaStream);
-        void CollapseMinima(
-            int minimaIdx,
-            NativeParallelMultiHashMap<int, int>.ParallelWriter boundaryWriterBM,
-            NativeParallelMultiHashMap<int, int>.ParallelWriter boundaryWriterMB,
-            NativeParallelHashMap<int, int>.ParallelWriter catchmentWriter,
-            ProfilerMarker? profiler = null
-        );
+    // public interface IPoolSuperPosition {
+    //     void CreateSuperPositions(int z, NativeStream.Writer minimaStream);
+    //     void CollapseMinima(
+    //         int minimaIdx,
+    //         NativeParallelMultiHashMap<int, int>.ParallelWriter boundaryWriterBM,
+    //         NativeParallelMultiHashMap<int, int>.ParallelWriter boundaryWriterMB,
+    //         NativeParallelHashMap<int, int>.ParallelWriter catchmentWriter,
+    //         ProfilerMarker? profiler = null
+    //     );
 
-        void SolvePoolHeirarchy(
-            NativeParallelMultiHashMap<int, int> boundary_BM,
-            NativeParallelMultiHashMap<int, int> boundary_MB,
-            NativeParallelHashMap<int, int> catchmentMap,
-            UnsafeParallelHashMap<PoolKey, Pool> pools,
-            ProfilerMarker? profiler = null
-        );
-        void SetupCollapse(
-            int resolution,
-            NativeArray<Cardinal> flow_,
-            NativeSlice<float> heightMap_,
-            NativeSlice<float> outMap_);
+    //     void SolvePoolHeirarchy(
+    //         NativeParallelMultiHashMap<int, int> boundary_BM,
+    //         NativeParallelMultiHashMap<int, int> boundary_MB,
+    //         NativeParallelHashMap<int, int> catchmentMap,
+    //         UnsafeParallelHashMap<PoolKey, Pool> pools,
+    //         ProfilerMarker? profiler = null
+    //     );
+    //     void SetupCollapse(
+    //         int resolution,
+    //         NativeArray<Cardinal> flow_,
+    //         NativeSlice<float> heightMap_,
+    //         NativeSlice<float> outMap_);
         
-        void SetupPoolGeneration(
-            int resolution,
-            NativeSlice<float> heightMap_,
-            NativeSlice<float> outMap_
-        );
+    //     void SetupPoolGeneration(
+    //         int resolution,
+    //         NativeSlice<float> heightMap_,
+    //         NativeSlice<float> outMap_
+    //     );
 
 
-    }
+    // }
 
     // public interface IParticle {
 

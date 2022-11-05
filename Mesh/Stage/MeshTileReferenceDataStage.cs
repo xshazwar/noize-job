@@ -44,9 +44,11 @@ namespace xshazwar.noize.mesh {
             MeshStageData gd = (MeshStageData) job.data;
             string bufferName = getBufferName(gd);
             if(!job.stageManager.BufferExists<NativeArray<float>>(bufferName)){
+                Debug.Log($"Missing Required Buffer {bufferName}");
                 return false;
             }
             bool locked = job.stageManager.IsLocked<NativeArray<float>>(bufferName);
+            if(locked) Debug.Log($"Buffer {bufferName} locked.");
             return !locked;
 
         }

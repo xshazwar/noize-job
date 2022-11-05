@@ -32,6 +32,8 @@ namespace xshazwar.noize.scripts {
         public BasePipeline meshPipeline;
         public MeshBakery bakery;
 
+        public ErosionSettings erosionSettings;
+
         public int GenTileOffsetX = 0;
         public int GenTileOffsetZ = 0;
         

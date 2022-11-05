@@ -11,5 +11,7 @@ namespace xshazwar.noize.pipeline {
         [Range(8, 4096)]
         public int resolution = 512;
         public NativeSlice<float> rightData;
+        public int xpos = 0;
+        public int zpos = 0;
     }
 }

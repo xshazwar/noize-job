@@ -71,36 +71,6 @@ namespace xshazwar.noize.scripts {
             }
         }
 
-        // public override void OnUpdate(){
-        //     if (upstreamsRunning){
-        //         Debug.Log("waiting for upstream");
-        //         return;
-        //     }
-        //     if (pipelineRunning){
-        //         Debug.Log("waiting for self to complete");
-        //         foreach(PipelineStage stage in stage_instances){
-        //             stage.OnUpdate();
-        //         }
-        //     }else if (!pipelineRunning && !pipelineQueued && !upstreamsRunning){
-        //         if (queue.Count > 0){
-        //             Debug.Log("scheduling upstream from queue");
-        //             PipelineWorkItem wi;
-        //             if (queue.TryDequeue(out wi)){
-        //                 upstreamsRunning = true; 
-        //                 ScheduleUpstreams(wi.data, wi.action);
-        //             }
-        //         }else{
-        //             return;
-        //         }
-        //     }else if (pipelineQueued && !pipelineRunning){
-        //         Debug.Log("kicking off pipeline");
-        //         pipelineRunning = true;
-        //         stage_instances[0].ReceiveInput(pipelineInput);
-        //         pipelineQueued = false;
-        //     }
-        // }
-
-        // protected void ScheduleUpstreams(StageIO req, Action<StageIO> onResult){
         protected void ScheduleUpstreams(PipelineWorkItem wi){
             Debug.Log("Scheduling upstream work");
             #if UNITY_EDITOR
@@ -149,7 +119,7 @@ namespace xshazwar.noize.scripts {
                 // Debug.Log("Upstreams ready!");
                 #if UNITY_EDITOR
                 reduceWall.Stop();
-                Debug.LogWarning($"ReduceUpstreams -> {res.uuid}: {reduceWall.ElapsedMilliseconds}ms");
+                Debug.LogWarning($"ReduceUpstreams -> {res.uuid}: {reduceWall.ElapsedMilliseconds}ms >> {d.xpos}, {d.zpos}");
                 #endif
                 upstreamsRunning = false;
                 Schedule(
@@ -157,7 +127,10 @@ namespace xshazwar.noize.scripts {
                         uuid = d.uuid,
                         resolution = d.resolution,
                         data = currentWorkItem.stages[Upstream.LEFT].data,
-                        rightData = currentWorkItem.stages[Upstream.RIGHT].data
+                        rightData = currentWorkItem.stages[Upstream.RIGHT].data,
+                        xpos = d.xpos,
+                        zpos = d.zpos
+
                     },
                     completeAction: currentWorkItem.action
                 );
