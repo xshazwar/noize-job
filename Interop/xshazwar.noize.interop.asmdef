@@ -1,8 +1,10 @@
 {
-    "name": "xshazwar.unityaddons",
+    "name": "xshazwar.noize.interop",
     "rootNamespace": "",
     "references": [
-        "GUID:4bdfb2239705740718731d0b4d54061d"
+        "GUID:4bdfb2239705740718731d0b4d54061d",
+        "GUID:90ab0119788ed4ec6b8fe54dd44f01fa",
+        "GUID:fd5fbbd08732a7c6bbcee869ba2af990"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

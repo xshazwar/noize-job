@@ -5,6 +5,7 @@ using Unity.Collections.LowLevel.Unsafe;
 
 using Unity.Collections;
 using Unity.Jobs;
+using Unity.Burst;
 using UnityEngine;
 
 using static Unity.Mathematics.math;

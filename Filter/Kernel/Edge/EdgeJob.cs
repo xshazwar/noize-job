@@ -12,7 +12,7 @@ namespace xshazwar.noize.filter.edge {
             List<float[]> kernels = EdgeDetectionKernel.Get1DKernel(algo, dir);
             NativeArray<float> kbx = new NativeArray<float>(kernels[0], Allocator.Persistent);
             NativeArray<float> kbz = new NativeArray<float>(kernels[1], Allocator.Persistent);
-            JobHandle res = SeparableKernelFilter.ScheduleSeries<KernelSampleXOperator, KernelSampleZOperator>(src, tmp, resolution, 3, kbx, kbz, 1f, dependency);
+            JobHandle res = SeparableKernelFilter.ScheduleSeries(src, tmp, resolution, 3, kbx, kbz, 1f, dependency);
             return kbx.Dispose(
                 kbz.Dispose(
                     res
@@ -32,7 +32,7 @@ namespace xshazwar.noize.filter.edge {
     public struct Edge2DFilter {    
         public static JobHandle Schedule(NativeSlice<float> src, NativeSlice<float> tmp, EdgeAlgorithm algo, int resolution, JobHandle dependency){
             List<float[]> k = EdgeDetectionKernel.Get2DKernel(algo);
-            return SeparableKernelFilter.ScheduleReduce<RootSumSquaresTiles, KernelSampleXOperator, KernelSampleZOperator>(src, tmp, k[0], k[1], k[2], k[3], resolution, dependency);
+            return SeparableKernelFilter.ScheduleReduce<RootSumSquaresTiles>(src, tmp, k[0], k[1], k[2], k[3], resolution, dependency);
         }
         
         public delegate JobHandle Edge2DFilterDelegate (

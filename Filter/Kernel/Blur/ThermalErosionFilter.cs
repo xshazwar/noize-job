@@ -23,13 +23,15 @@ namespace xshazwar.noize.filter.blur {
 
         [NativeDisableParallelForRestriction]
         [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
         NativeSlice<float> data;
         int flip;
         float talus;
         float heightRatio;
         float increment;
         int resolution;
-        float f_resolution;
+        // float f_resolution;
+        float maxDiff;
 
         // [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int getIdx(int x, int z){
@@ -64,28 +66,6 @@ namespace xshazwar.noize.filter.blur {
             data[idx.w] = val.w;
         }
 
-        // // 4 step square
-        // public rectifyNeighborhood(float4 val){
-        //     int idx = (z * resolution) + x;
-        //     int idxr = getIdx(x + 1, z);
-        //     int idxd = getIdx(x, z + 1);
-        //     int idxdr = getIdx(x + 1, z + 1);
-        //     float v = data[idx];
-        //     float vr = data[idxr];
-        //     float vd = data[idxd];
-        //     float vdr = data[idxdr];
-        //     rectify(ref v, ref vr);
-        //     rectify(ref v, ref vd);
-        //     rectify(ref v, ref vdr);
-        //     rectify(ref vr, ref vd);
-        //     rectify(ref vr, ref vdr);
-        //     rectify(ref vd, ref vdr);
-        //     data[idx] = v;
-        //     data[idxr] = vr;
-        //     data[idxd] = vd;
-        //     data[idxdr] = vdr;
-        // }
-
         // 4 step square
         public void rectifyNeighborhood(ref float4 v){
             v.xy = rectify(v.xy);
@@ -99,16 +79,15 @@ namespace xshazwar.noize.filter.blur {
         // [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float2 rectify(float2 v){
             float diff = abs(v.x - v.y);
-            float angle = atan(diff / (1f / f_resolution));
-            if(angle > talus){
-                float excess = tan((angle - talus)) / f_resolution;
+            if(diff > maxDiff){
+                float excess = diff - maxDiff;
                 if(v.x > v.y){
-                    v.y += increment * 0.5f * excess;
-                    v.x -= increment * 0.5f * excess;
+                    v.y += increment * excess;
+                    v.x -= increment * excess;
                 }
                 else{
-                    v.x += increment * 0.5f * excess;
-                    v.y -= increment * 0.5f * excess;
+                    v.x += increment * excess;
+                    v.y -= increment * excess;
                 }
             }
             return v;
@@ -150,15 +129,16 @@ namespace xshazwar.noize.filter.blur {
             var job = new ThermalErosionFilter();
             job.data = src;
             job.resolution = resolution;
-            job.f_resolution = (float) resolution;
+            // job.f_resolution = (float) resolution;
             job.increment = incrementRatio;
             job.heightRatio = meshHeightWidthRatio;
             job.talus = (talus / 90f) * 3.14159f/2f;
+            job.maxDiff = (tan(job.talus) * job.heightRatio) / (float) resolution;
             for (int i = 0; i < iterations; i++){
                 for(int flipflop = 0; flipflop < 4; flipflop++){
                     job.flip = flipflop;
                     handle = job.ScheduleParallel(
-                        ((int) resolution / 2) - 1, 32, handle
+                        ((int) resolution / 2) - 1, 1, handle
                     );
                 }
             }

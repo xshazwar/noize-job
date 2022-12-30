@@ -39,9 +39,9 @@ namespace xshazwar.noize.scripts {
         protected System.Diagnostics.Stopwatch reduceWall;
         #endif
         
-        public GeneratorPipeline upstreamPipelineLeft;
+        public BasePipeline upstreamPipelineLeft;
 
-        public GeneratorPipeline upstreamPipelineRight;
+        public BasePipeline upstreamPipelineRight;
 
         public bool upstreamsRunning = false;
 
@@ -51,7 +51,15 @@ namespace xshazwar.noize.scripts {
         protected NativeArray<float> rightData;
 
         public override BasePipeline[] GetDependencies(){
-            return new BasePipeline[]{upstreamPipelineLeft, upstreamPipelineRight, this};
+            List<BasePipeline> pipesUp = new List<BasePipeline>(){
+                upstreamPipelineLeft,
+                upstreamPipelineRight,
+                this
+            };
+            // pipesUp.Add(upstreamPipelineLeft, upstreamPipelineRight, this);
+            pipesUp.AddRange(upstreamPipelineLeft.GetDependencies());
+            pipesUp.AddRange(upstreamPipelineRight.GetDependencies());
+            return pipesUp.ToArray();
         }
 
         public override void OnUpdate(){

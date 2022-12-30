@@ -19,11 +19,11 @@ namespace xshazwar.noize.filter {
         where K : struct, IMutateTiles, IKernelData
 		where D : struct, IRWTile
         {
-
 		K kernelPass;
 	
         [NativeDisableParallelForRestriction]
         [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
 		D data;
 
 		public void Execute (int i) => kernelPass.Execute<D>(i, data);
@@ -136,8 +136,33 @@ namespace xshazwar.noize.filter {
         };
 
         
+        // // Jobs that can operate on the previous steps output
+        // public static JobHandle ScheduleSeries<XO, ZO>(
+        //     NativeSlice<float> src,
+        //     NativeSlice<float> tmp,
+        //     int resolution,
+        //     int kernelSize,
+        //     NativeArray<float> kernelX,
+        //     NativeArray<float> kernelZ,
+        //     float kernelFactor,
+        //     JobHandle dependency
+        // ) 
+        //     where XO: struct, IKernelOperator, IKernelData
+        //     where ZO: struct, IKernelOperator, IKernelData
+        // {
+        //     UnityEngine.Profiling.Profiler.BeginSample("Schedule X / Y Pass");
+        //     JobHandle first = GenericKernelJob<KernelTileMutation<XO>, RWTileData>.ScheduleParallel(
+        //         src, tmp, resolution, kernelSize, kernelX, kernelFactor, dependency
+        //     );
+        //     JobHandle res = GenericKernelJob<KernelTileMutation<ZO>, RWTileData>.ScheduleParallel(
+        //         src, tmp, resolution, kernelSize, kernelZ, kernelFactor, first
+        //     );
+        //     UnityEngine.Profiling.Profiler.EndSample();
+        //     return res;
+        // }
+
         // Jobs that can operate on the previous steps output
-        public static JobHandle ScheduleSeries<XO, ZO>(
+        public static JobHandle ScheduleSeries(
             NativeSlice<float> src,
             NativeSlice<float> tmp,
             int resolution,
@@ -146,22 +171,20 @@ namespace xshazwar.noize.filter {
             NativeArray<float> kernelZ,
             float kernelFactor,
             JobHandle dependency
-        ) 
-            where XO: struct, IKernelOperator, IKernelData
-            where ZO: struct, IKernelOperator, IKernelData
+        )
         {
             UnityEngine.Profiling.Profiler.BeginSample("Schedule X / Y Pass");
-            JobHandle first = GenericKernelJob<KernelTileMutation<XO>, RWTileData>.ScheduleParallel(
+            JobHandle first = GenericKernelJob<KernelTileMutation<KernelSampleXOperator>, RWTileData>.ScheduleParallel(
                 src, tmp, resolution, kernelSize, kernelX, kernelFactor, dependency
             );
-            JobHandle res = GenericKernelJob<KernelTileMutation<ZO>, RWTileData>.ScheduleParallel(
+            JobHandle res = GenericKernelJob<KernelTileMutation<KernelSampleZOperator>, RWTileData>.ScheduleParallel(
                 src, tmp, resolution, kernelSize, kernelZ, kernelFactor, first
             );
             UnityEngine.Profiling.Profiler.EndSample();
             return res;
         }
 
-        public static JobHandle ScheduleReduce<RE, XO, ZO>(
+        public static JobHandle ScheduleReduce<RE>(
             NativeSlice<float> src,
             NativeSlice<float> tmp,
             float[] AX,
@@ -172,8 +195,6 @@ namespace xshazwar.noize.filter {
             JobHandle dependency
         )
             where RE: struct, IReduceTiles
-            where XO: struct, IKernelOperator, IKernelData
-            where ZO: struct, IKernelOperator, IKernelData
         {
             NativeArray<float> original = new NativeArray<float>(src.Length, Allocator.Persistent);
             NativeSlice<float> originalS = new NativeSlice<float>(original);
@@ -184,8 +205,8 @@ namespace xshazwar.noize.filter {
             NativeArray<float> kbx_v = new NativeArray<float>(BX, Allocator.Persistent);
             NativeArray<float> kbz_v = new NativeArray<float>(BZ, Allocator.Persistent);
             
-            JobHandle A = ScheduleSeries<XO, ZO>(src, tmp, resolution, 3, kbx_h, kbz_h, 1f, dependency);
-            JobHandle B = ScheduleSeries<XO, ZO>(originalS, tmp, resolution, 3, kbx_v, kbz_v, 1f, A);
+            JobHandle A = ScheduleSeries(src, tmp, resolution, 3, kbx_h, kbz_h, 1f, dependency);
+            JobHandle B = ScheduleSeries(originalS, tmp, resolution, 3, kbx_v, kbz_v, 1f, A);
             JobHandle reducePass =  ReductionJob<RE, RWTileData, ReadTileData>.ScheduleParallel(
                 src, originalS, tmp, resolution, B
             );
@@ -201,7 +222,7 @@ namespace xshazwar.noize.filter {
 
             switch(filter){
                 case KernelFilterType.Sobel3_2D:
-                    return ScheduleReduce<RootSumSquaresTiles, KernelSampleXOperator, KernelSampleZOperator>(src, tmp, sobel3_HX, sobel3_HZ, sobel3_VX, sobel3_VZ, resolution, dependency);
+                    return ScheduleReduce<RootSumSquaresTiles>(src, tmp, sobel3_HX, sobel3_HZ, sobel3_VX, sobel3_VZ, resolution, dependency);
                 case KernelFilterType.Smooth3:
                     break;
                 case KernelFilterType.Gauss9_S1:
@@ -275,7 +296,7 @@ namespace xshazwar.noize.filter {
             NativeArray<float> kbx = new NativeArray<float>(kernelBodyX, Allocator.Persistent);
             NativeArray<float> kbz = new NativeArray<float>(kernelBodyZ, Allocator.Persistent);
             UnityEngine.Profiling.Profiler.EndSample();
-            JobHandle res = ScheduleSeries<KernelSampleXOperator, KernelSampleZOperator>(src, tmp, resolution, kernelSize, kbx, kbz, kernelFactor, dependency);
+            JobHandle res = ScheduleSeries(src, tmp, resolution, kernelSize, kbx, kbz, kernelFactor, dependency);
             // Dispose of native containers on completion
             return kbx.Dispose(
                 kbz.Dispose(

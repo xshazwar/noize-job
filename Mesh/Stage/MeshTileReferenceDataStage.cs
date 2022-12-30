@@ -30,7 +30,7 @@ namespace xshazwar.noize.mesh {
         private Mesh currentMesh;
         private Mesh.MeshDataArray meshDataArray;
 		private Mesh.MeshData meshData;
-        public MeshType meshType = MeshType.SquareGridHeightMap;
+        public MeshType meshType = MeshType.OvershootSquareGridHeightMap;
         public string contextAlias;
 
         private string getBufferName(MeshStageData d){

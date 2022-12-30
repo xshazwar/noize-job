@@ -21,8 +21,10 @@ namespace xshazwar.noize.filter {
         public const int MAX = 1;
         public const int RANGE = 2;
         [ReadOnly]
+        [NoAlias]
         NativeSlice<float> map;
         [WriteOnly]
+        [NoAlias]
         NativeArray<float> res;
 
         float HIGHEST_MIN;
@@ -61,8 +63,10 @@ namespace xshazwar.noize.filter {
         
         [NativeDisableParallelForRestriction]
         [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
         RW data ;
         [ReadOnly]
+        [NoAlias]
         NativeSlice<float> args;
 
         public void Execute (int i) => fn.Execute<RW>(i, data, args);

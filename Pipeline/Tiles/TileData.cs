@@ -18,11 +18,13 @@ namespace xshazwar.noize.pipeline {
         [NativeDisableParallelForRestriction]
         [NativeDisableContainerSafetyRestriction]
         [ReadOnly]
+        [NoAlias]
         NativeSlice<float> read;
         
         [NativeDisableParallelForRestriction]
         [NativeDisableContainerSafetyRestriction]
         [WriteOnly]
+        [NoAlias]
         NativeSlice<float> write;
 
         public static JobHandle Schedule(NativeSlice<float> write_, NativeSlice<float> read_, JobHandle deps){
@@ -49,11 +51,13 @@ namespace xshazwar.noize.pipeline {
         [NativeDisableParallelForRestriction]
         [NativeDisableContainerSafetyRestriction]
         [ReadOnly]
+        [NoAlias]
         NativeSlice<float> src;
 
         [NativeDisableParallelForRestriction]
         [NativeDisableContainerSafetyRestriction]
         [WriteOnly]
+        [NoAlias]
         NativeSlice<float> dst;
         int resolution;
 
@@ -88,6 +92,7 @@ namespace xshazwar.noize.pipeline {
         [NativeDisableParallelForRestriction]
         [NativeDisableContainerSafetyRestriction]
         [ReadOnly]
+        [NoAlias]
         NativeSlice<float> src;
         int resolution;
 
@@ -116,6 +121,7 @@ namespace xshazwar.noize.pipeline {
         [NativeDisableParallelForRestriction]
         [NativeDisableContainerSafetyRestriction]
         [WriteOnly]
+        [NoAlias]
         NativeSlice<float> dst;
         int resolution;
 

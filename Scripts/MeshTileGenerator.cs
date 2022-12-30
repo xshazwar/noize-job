@@ -193,15 +193,20 @@ namespace xshazwar.noize.scripts {
             MeshRenderer renderer = go.AddComponent<MeshRenderer>();
             LiveErosion erosion = go.AddComponent<LiveErosion>();
             Rigidbody rb = go.AddComponent<Rigidbody>();
+            StreamDrawer sd = go.AddComponent<StreamDrawer>();
             rb.isKinematic = true;
             erosion.SetFromTileGenerator(
                 activeTiles[data.uuid], this, data.mesh
             );
             string key = pos.ToString();
+            sd.referenceMat = meshMaterial;
             children[key] = go;
-            if(meshMaterial != null){
-                renderer.material = meshMaterial;
-            }
+            // if(meshMaterial != null){
+            //     Material clone = new Material(meshMaterial);
+            //     clone.CopyPropertiesFromMaterial(meshMaterial);
+            //     renderer.material = clone;
+            //     // renderer.material = meshMaterial;
+            // }
             filter.mesh = data.mesh;
         }
 

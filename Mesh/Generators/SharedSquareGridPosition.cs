@@ -26,13 +26,14 @@ namespace xshazwar.noize.mesh.Generators {
 			vertex.position.x = -0.5f;
 			vertex.position.z = (float)z / Resolution - 0.5f;
 			vertex.position.y = 0f;
+			vertex.texCoord0.y = ((float) z) / ((float) Resolution + 1);
 
 			streams.SetVertex(vi, vertex);
 			vi += 1;
 
 			for (int x = 1; x <= Resolution; x++, vi++, ti += 2) {
 				vertex.position.x = (float)x / Resolution - 0.5f;
-				// vertex.position.y = 0f;
+				vertex.texCoord0.x = ((float) x) / ((float) Resolution + 1);
 				streams.SetVertex(vi, vertex);
 
 				if (z > 0) {

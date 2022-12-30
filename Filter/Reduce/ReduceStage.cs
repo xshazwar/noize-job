@@ -12,7 +12,9 @@ namespace xshazwar.noize.filter {
     public enum ReductionType {
         SUBTRACT,
         MULTIPLY,
-        ROOTSUMSQUARES
+        ROOTSUMSQUARES,
+        MAX,
+        MIN
     }
     
     [CreateAssetMenu(fileName = "ReduceStage", menuName = "Noize/Filter/ReduceFilter", order = 2)]
@@ -20,7 +22,9 @@ namespace xshazwar.noize.filter {
         static ReductionJobScheduleDelegate[] jobs = new ReductionJobScheduleDelegate[] {
             ReductionJob<SubtractTiles, RWTileData, ReadTileData>.ScheduleParallel,
             ReductionJob<MultiplyTiles, RWTileData, ReadTileData>.ScheduleParallel,
-            ReductionJob<RootSumSquaresTiles, RWTileData, ReadTileData>.ScheduleParallel
+            ReductionJob<RootSumSquaresTiles, RWTileData, ReadTileData>.ScheduleParallel,
+            ReductionJob<MaxTiles, RWTileData, ReadTileData>.ScheduleParallel,
+            ReductionJob<MinTiles, RWTileData, ReadTileData>.ScheduleParallel
         };
         public ReductionType operation;
         private NativeArray<float> tmp;

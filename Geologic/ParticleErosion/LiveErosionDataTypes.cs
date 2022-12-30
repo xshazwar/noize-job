@@ -76,6 +76,7 @@ namespace xshazwar.noize.geologic {
         public float SURFACE_EVAPORATION_RATE;
         public float POOL_PLACEMENT_MULTIPLIER;
         public float TRACK_PLACEMENT_MULTIPLIER;
+        public float FLOW_LOSS_RATE;
 
         public int PILING_RADIUS;
         public float MIN_PILE_INCREMENT;
@@ -103,6 +104,7 @@ namespace xshazwar.noize.geologic {
             SURFACE_EVAPORATION_RATE = 0.1f;
             POOL_PLACEMENT_MULTIPLIER = 0.5f;
             TRACK_PLACEMENT_MULTIPLIER = 80f;
+            FLOW_LOSS_RATE = 0.05f;
 
             PILING_RADIUS = 15;
             MIN_PILE_INCREMENT = 1f;
@@ -177,17 +179,7 @@ namespace xshazwar.noize.geologic {
         }
 
         public float2 nextPos(ref WorldTile tile) {
-            float h = tile.WIH(pos);
-            float4 neighbor = new float4(
-                tile.WIH(pos + up),
-                tile.WIH(pos + right),
-                tile.WIH(pos + down),
-                tile.WIH(pos + left)
-            );
-
-            float3 a = cross(new float3(0, h - neighbor.x, ep.PATCH_RES.y), new float3(ep.PATCH_RES.x, h - neighbor.y, 0));
-            float3 b = cross(new float3(0, h - neighbor.z, -ep.PATCH_RES.y), new float3(-ep.PATCH_RES.x, h - neighbor.w, 0));
-            float3 norm = new float3(a.x + b.x, a.y + b.y, a.z + b.z);
+            float3 norm = tile.Normal(pos);
             float2 g = new float2(-norm.x, -norm.z);
             float3 _norm = normalize(norm);
             float2 gnorm = round(4f * normalize(g)) / 4f;
@@ -282,20 +274,37 @@ namespace xshazwar.noize.geologic {
     public struct WorldTile {
 
         public ErosionParameters ep;
-
-        public static readonly int2 ZERO2 = new int2(0);
+        // TODO move these params to ErosionParameters
+        static public readonly float MINFLOWPOOL = .00005f;
+        /*
+            *******Data Structures******
+            (populated as needed by jobs)
+        */
         
         [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
         public NativeArray<float> height;
         
         [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
         public NativeArray<float> pool;
         
         [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
         public NativeArray<float> flow;
 
         [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
         public NativeArray<float> track;
+
+        [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
+        public NativeArray<float> plants;
+
+        private Unity.Mathematics.Random random;
+
+        // Constants
+        public static readonly int2 ZERO2 = new int2(0);
 
         public static readonly int2 left = new int2(-1, 0);
         public static readonly int2 right = new int2(1, 0);
@@ -309,30 +318,72 @@ namespace xshazwar.noize.geologic {
         static public readonly int[] normX =  new int[] {-1,-1,-1, 0, 0, 1, 1, 1};
         static public readonly int[] normY =  new int[] {-1, 0, 1,-1, 1,-1, 0, 1};
 
-        static public readonly float MINFLOWPOOL = .00005f;
-        static readonly float lRate = 0.05f;
+        // Random
 
+        public int2 RandomPos(){
+            return random.NextInt2(ZERO2, ep.TILE_RES);
+        }
+
+        public void SetRandomSeed(int seed){
+            random = new Unity.Mathematics.Random((uint) seed);
+        }
+
+        // Normal
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float3 Normal(float2 p){
+            int2 pos = new int2(p);
+            return Normal(pos);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float3 Normal(int2 pos){
-            // returns normal of the (WIH)
+            float h = WIH(pos);
+            float4 neighbor;
+            if(UnsafeNeighborhood(pos)){
+                neighbor = new float4(
+                    WIH(pos + up),
+                    WIH(pos + right),
+                    WIH(pos + down),
+                    WIH(pos + left)
+                );
+            }else{
+                neighbor = new float4(
+                    WIH_Unsafe(pos + up),
+                    WIH_Unsafe(pos + right),
+                    WIH_Unsafe(pos + down),
+                    WIH_Unsafe(pos + left)
+                );
+            }
+            float3 a = cross(new float3(0, h - neighbor.x, ep.PATCH_RES.y), new float3(ep.PATCH_RES.x, h - neighbor.y, 0));
+            float3 b = cross(new float3(0, h - neighbor.z, -ep.PATCH_RES.y), new float3(-ep.PATCH_RES.x, h - neighbor.w, 0));
+            return new float3(a.x + b.x, a.y + b.y, a.z + b.z);
+        }
+
+        // public float3 Normal(int2 pos){
+        //     // returns normal of the (WIH)
             
-            float3 n = Normal(pos + nw, right, down);
-            n += Normal(pos + ne, down, left);
-            n += Normal(pos + se, left, up);
-            n += Normal(pos + sw, up, right);
-            n += Normal(pos, left, up);
-            n += Normal(pos, up, right);
-            n += Normal(pos, right, down);
-            n += Normal(pos, down, left);
+        //     float3 n = Normal(pos + nw, right, down);
+        //     n += Normal(pos + ne, down, left);
+        //     n += Normal(pos + se, left, up);
+        //     n += Normal(pos + sw, up, right);
+        //     n += Normal(pos, left, up);
+        //     n += Normal(pos, up, right);
+        //     n += Normal(pos, right, down);
+        //     n += Normal(pos, down, left);
 
-            return normalize(n);
-        }
+        //     return normalize(n);
+        // }
 
-        public float3 Normal(int2 pos, int2 a, int2 b){
-            return cross(
-                HiIVec(pos, 0, 0) - HiIVec(pos, a.x, a.y),
-                HiIVec(pos, 0, 0) - HiIVec(pos, b.x, b.y)
-            );
-        }
+        // [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        // public float3 Normal(int2 pos, int2 a, int2 b){
+        //     return cross(
+        //         HiIVec(pos, 0, 0) - HiIVec(pos, a.x, a.y),
+        //         HiIVec(pos, 0, 0) - HiIVec(pos, b.x, b.y)
+        //     );
+        // }
+
+        // Standing Water
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool StandingWater(int x, int z){
@@ -348,6 +399,8 @@ namespace xshazwar.noize.geologic {
         public bool StandingWater(float2 pos){
             return StandingWater(new int2(pos));
         }
+
+        // Water Inclusive Value
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float WIV(int idx){
@@ -370,6 +423,11 @@ namespace xshazwar.noize.geologic {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float WIH_Unsafe(int2 pos){
+            return WIH(getIdx(pos.x, pos.y));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float WIH(int x, int z){
             return WIH(getIdx(x, z));
         }
@@ -379,10 +437,10 @@ namespace xshazwar.noize.geologic {
             return WIH(SafeIdx(pos.x + dx, pos.y + dz));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public float3 HiIVec(int2 pos, int dx, int dz){
-            return new float3(dx, WIH(pos, dx, dz), dz);
-        }
+        // [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        // public float3 HiIVec(int2 pos, int dx, int dz){
+        //     return new float3(dx, WIH(pos, dx, dz), dz);
+        // }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int SafeIdx(int x, int z){
@@ -428,6 +486,20 @@ namespace xshazwar.noize.geologic {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool UnsafeNeighborhood(int2 pos){
+            return UnsafeNeighborhood(pos.x, pos.y);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool UnsafeNeighborhood(int x, int z){
+            if(x < 1) return true;
+            if(z < 1) return true;
+            if(x >= ep.TILE_RES.x - 1) return true;
+            if(z >= ep.TILE_RES.y - 1) return true;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool OutOfBounds(int2 pos){
             if(pos.x < 0 || pos.y < 0 || pos.x >= ep.TILE_RES.x || pos.y >= ep.TILE_RES.y) return true;
             return false;
@@ -438,22 +510,236 @@ namespace xshazwar.noize.geologic {
             return OutOfBounds(new int2(pos));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int4 CollectNeighbors(int x, int z){
+            // up, right, down, left
+            int4 nh;
+            if(UnsafeNeighborhood(x, z)){
+                nh = new int4(
+                    SafeIdx(up.x + x, up.y + z),
+                    SafeIdx(right.x + x, right.y + z),
+                    SafeIdx(down.x + x, down.y + z),
+                    SafeIdx(left.x + x, left.y + z)
+                );
+            }else{
+                nh = new int4(
+                    getIdx(up.x + x, up.y + z),
+                    getIdx(right.x + x, right.y + z),
+                    getIdx(down.x + x, down.y + z),
+                    getIdx(left.x + x, left.y + z)
+                );
+            }
+            return nh;
+        }
+
+
+        // Curviture Methods adapted from
+        // https://github.com/Scrawk/Terrain-Topology-Algorithms/blob/afe65384254462073f41984c4c8e7e029275d830/Assets/TerrainTopology/Scripts/CreateTopolgy.cs
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void CalculateDerivatives(int x, int z, float w, out float2 d1, out float3 d2){
+            float w2 = w * w;
+            float4 z1;
+            float z5 = height[getIdx(x,z)];
+            float4 z6;
+
+            if(UnsafeNeighborhood(x, z)){
+                z1 = new float4(
+                    height[SafeIdx(nw.x + x, nw.y + z)],
+                    height[SafeIdx(up.x + x, up.y + z)],
+                    height[SafeIdx(ne.x + x, ne.y + z)],
+                    height[SafeIdx(left.x + x, left.y + z)]
+                );
+                z6 = new float4(
+                    height[SafeIdx(right.x + x, right.y + z)],
+                    height[SafeIdx(sw.x + x, sw.y + z)],
+                    height[SafeIdx(down.x + x, down.y + z)],
+                    height[SafeIdx(se.x + x, se.y + z)]
+                );
+            }else{
+                z1 = new float4(
+                    height[getIdx(nw.x + x, nw.y + z)],
+                    height[getIdx(up.x + x, up.y + z)],
+                    height[getIdx(ne.x + x, ne.y + z)],
+                    height[getIdx(left.x + x, left.y + z)]
+                );
+                z6 = new float4(
+                    height[getIdx(right.x + x, right.y + z)],
+                    height[getIdx(sw.x + x, sw.y + z)],
+                    height[getIdx(down.x + x, down.y + z)],
+                    height[getIdx(se.x + x, se.y + z)]
+                );
+            }
+            z1 *= ep.HEIGHT;
+            z5 *= ep.HEIGHT;
+            z6 *= ep.HEIGHT;
+
+            float zx = (z1.z + z6.x + z6.w - z1.x - z1.w - z6.y) / (6.0f * w);
+            float zy = (z1.x + z1.y + z1.z - z6.y - z6.z - z6.w) / (6.0f * w);
+
+            float zxx = (z1.x + z1.z + z1.w + z6.x + z6.y + z6.w - 2.0f * (z1.y + z5 + z6.z)) / (3.0f * w2);
+            float zyy = (z1.x + z1.y + z1.z + z6.y + z6.z + z6.w - 2.0f + (z1.w + z5 + z6.x)) / (3.0f * w2);
+            float zxy = (z1.z + z6.y - z1.x - z6.w) / (4.0f * w2);
+
+            d1 = new float2(-zx, -zy);
+            d2 = new float3(-zxx, -zyy, -zxy);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float GaussianCurvature(float zx, float zy, float zxx, float zyy, float zxy){
+            float zx2 = zx * zx;
+            float zy2 = zy * zy;
+            float p = zx2 + zy2;
+
+            float n = zxx * zyy - zxy * zxy;
+            float d = pow(p + 1, 2f);
+            if (abs(d) < 1e-18f) return 0.0f;
+
+            return n / d;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float MeanCurvature(float zx, float zy, float zxx, float zyy, float zxy)
+        {
+            float zx2 = zx * zx;
+            float zy2 = zy * zy;
+            float p = zx2 + zy2;
+
+            float n = (1 + zy2) * zxx - 2.0f * zxy * zx * zy + (1 + zx2) * zyy;
+            float d = 2 * pow(p + 1, 1.5f);
+            if (abs(d) < 1e-18f) return 0.0f;
+            return n / d;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float VerticalCurvature(float zx, float zy, float zxx, float zyy, float zxy)
+        {
+            float zx2 = zx * zx;
+            float zy2 = zy * zy;
+            float p = zx2 + zy2;
+
+            float n = zx2 * zxx + 2.0f * zxy * zx * zy + zy2 * zyy;
+            float d = p * pow(p + 1, 1.5f);
+            if (abs(d) < 1e-18f) return 0.0f;
+            return n / d;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float HorizontalCurvature(float zx, float zy, float zxx, float zyy, float zxy){
+            float zx2 = zx * zx;
+            float zy2 = zy * zy;
+            float p = zx2 + zy2;
+
+            float n = zy2 * zxx - 2.0f * zxy * zx * zy + zx2 * zyy;
+            float d = p * pow(p + 1f, 0.5f);
+            if (abs(d) < 1e-18f) return 0.0f;
+            return n / d;
+        }
+
+        // [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        // public float Curviture(int2 pos, float l){
+        //     float2 d1;
+        //     float3 d2;
+        //     CalculateDerivatives(pos.x, pos.y, l, out d1, out d2);
+        //     // float v = HorizontalCurvature(d1.x, d1.y, d2.x, d2.y, d2.z);
+        //     float H = MeanCurvature(d1.x, d1.y, d2.x, d2.y, d2.z);
+        //     float K = GaussianCurvature(d1.x, d1.y, d2.x, d2.y, d2.z);
+        //     float v = H * H - K;
+        //     if(v <= 0f) return 0f;
+        //     v = H + sqrt(v);
+        //     // return v;
+        //     return RectifyRange(v, 2f);// * 10f;
+
+        // }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float Curviture(int2 pos, float l){
+            float2 d1;
+            float3 d2;
+            CalculateDerivatives(pos.x, pos.y, l, out d1, out d2);
+            float v = HorizontalCurvature(d1.x, d1.y, d2.x, d2.y, d2.z);
+            // float v = VerticalCurvature(d1.x, d1.y, d2.x, d2.y, d2.z);
+            v = abs(v);
+            // return v;
+            // if(v >= 0f) return 0f;
+            return abs(RectifyRange(v, .05f)) / 2f;
+
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float RectifyRange(float v, float exp_){
+            float sign_ = sign(v);
+            float pow_ = pow(10f, exp_);
+            float log_ = log(1.0f + pow_ * abs(v));
+            return sign_ * log_ ;
+        }
+
         public void UpdateFlowMapFromTrack(int x, int z){
             int i = getIdx(x, z);
             float pv = flow[i];
             float tv = track[i];
             float poolV = pool[i];
             if(poolV > MINFLOWPOOL){
-                flow[i] = ((1f - 0.1f * lRate) * pv);
+                flow[i] = ((1f - 0.1f * ep.FLOW_LOSS_RATE) * pv);
             }
+            // track does not accumulate to flow where there's a pool. Only decays
             else if(tv > 0f){
-                flow[i] = ((1f - lRate) * pv) + (lRate * 50.0f * tv) / (1f + 50.0f* tv);
+                flow[i] = ((1f - ep.FLOW_LOSS_RATE) * pv) + (ep.FLOW_LOSS_RATE * 50.0f * tv) / (1f + 50.0f* tv);
             }else{
-                flow[i] = (1f - lRate) * pv;
+                flow[i] = (1f - ep.FLOW_LOSS_RATE) * pv;
             }
             track[i] = 0f;
             // Evaporation rate of pools
             pool[i] = max(poolV - (ep.SURFACE_EVAPORATION_RATE / ep.HEIGHT), 0f);
+        }
+
+        public void ChangeVegetationDensity(int x, int z, float mag){
+            float4 v;
+            // on axes
+            int4 nh = CollectNeighbors(x, z);
+            v = new float4(
+                plants[nh.x],
+                plants[nh.y],
+                plants[nh.z],
+                plants[nh.w]
+            );
+            v +=  mag * 0.6f;
+            plants[nh.x] = v.x;
+            plants[nh.y] = v.y;
+            plants[nh.z] = v.z;
+            plants[nh.w] = v.w;
+            // on diagonals
+            if(UnsafeNeighborhood(x, z)){
+                nh = new int4(
+                    SafeIdx(ne.x + x, ne.y + z),
+                    SafeIdx(nw.x + x, nw.y + z),
+                    SafeIdx(se.x + x, se.y + z),
+                    SafeIdx(sw.x + x, sw.y + z)
+                );
+            }else{
+                nh = new int4(
+                    getIdx(ne.x + x, ne.y + z),
+                    getIdx(nw.x + x, nw.y + z),
+                    getIdx(se.x + x, se.y + z),
+                    getIdx(sw.x + x, sw.y + z)
+                );
+            }
+            v = new float4(
+                plants[nh.x],
+                plants[nh.y],
+                plants[nh.z],
+                plants[nh.w]
+            );
+            v +=  mag * 0.4f;
+            plants[nh.x] = v.x;
+            plants[nh.y] = v.y;
+            plants[nh.z] = v.z;
+            plants[nh.w] = v.w;
+
+            // here
+            nh.x = getIdx(x,z);
+            v.x = plants[nh.x];
+            v += mag * 1f;
+            plants[nh.x] = v.x;
         }
 
         public void SpreadPool(
@@ -568,6 +854,7 @@ namespace xshazwar.noize.geologic {
 
     public struct PileSolver{
         [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
         NativeArray<ManhattanVertex> verts;
         public WorldTile tile;
         int2 center;
@@ -612,7 +899,6 @@ namespace xshazwar.noize.geologic {
                     }
                 }
             }
-            // Debug.Log($"used : {c} / {triCount}");
         }
 
         public void SetPile(int2 pos){
@@ -632,7 +918,6 @@ namespace xshazwar.noize.geologic {
             ManhattanVertex tri;
             for (int round = 1; round <= maxDistance; round++){
                 level = verts[0].val + (increment * (float)round);
-                // Debug.Log($"reference level for rnd{round} === {level}");
                 c = -1;
                 for(int dist = 0; dist < round; dist++){
                     for(int dir = 0; dir < 4; dir++){
@@ -645,9 +930,6 @@ namespace xshazwar.noize.geologic {
                             if(!tri.CanRaiseTo(level)){
                                 continue;
                             }
-                            // float diff = tri.RaiseBy(max(min(0.5f * (level - increment) - tri.val, remaining), 0f));
-                            // float change = max(((level - tri.val) - increment), increment);
-                            // float diff = tri.RaiseBy(min(change, remaining));
                             float diff = tri.RaiseBy(min(increment, remaining));
                             deposited += diff;
                             remaining = amount - deposited;
@@ -748,148 +1030,72 @@ namespace xshazwar.noize.geologic {
         }
     }
 
-    // public struct ManhattanTriangle {
-    //     int2 posRef;
-    //     int dist;
-    //     int instanceId;
-    //     bool pointsIn;
-    //     bool sawTooth;
-    //     public bool modified;
-    //     public bool isValid;
-    //     int2 dirA;
-    //     int2 dirB;
+    public enum ColorChannelFloat
+    {
+        R = 0,
+        G = 4,
+        B = 8,
+        A = 12
+    }
 
-    //     int2 oa;
-    //     int2 ob;
-    //     int2 oc;
+    public enum ColorChannelByte
+    {
+        R = 0,
+        G = 1,
+        B = 2,
+        A = 3
+    }
 
-    //     int3 idxP;
-    //     float3 valP;
+    public struct RGBA32
+    {
 
-    //     public ManhattanTriangle(int dist, int i, bool pointsIn, bool sawTooth, int2 dirA, int2 dirB){
-    //         this.posRef = new int2(0);
-    //         this.dist = dist;
-    //         this.instanceId = i;
-    //         this.pointsIn = pointsIn;
-    //         this.sawTooth = sawTooth;
-    //         this.dirA = dirA;
-    //         this.dirB = dirB;
-    //         this.idxP = new int3(0);
-    //         this.valP = new float3(0f);
-    //         this.modified = false;
-    //         this.isValid = true;
-    //         oa = new int2(0);
-    //         ob = new int2(0);
-    //         oc = new int2(0);
-    //         TriangleIndices(dist, i, sawTooth, dirA, dirB);
-    //     }
+        public byte R, G, B, A;
 
-    //     public void TriangleIndices(int dist, int i, bool sawTooth, int2 dirA, int2 dirB){
-    //         if(sawTooth){
-    //             if (i % 2 == 0){
-    //                 i /= 2;
-    //                 i = (int) i;
-    //                 oa = ManhattanMember(dist, i, dirA, dirB);
-    //                 ob = ManhattanMember(dist + 1, i, dirA, dirB);
-    //                 oc = ManhattanMember(dist + 1, i + 1, dirA, dirB);
-    //             }else{
-    //                 i /= 2;
-    //                 i = (int) i;
-    //                 i += 1;
-    //                 oa = ManhattanMember(dist, i, dirA, dirB);
-    //                 ob = ManhattanMember(dist + 1, i, dirA, dirB);
-    //                 oc = ManhattanMember(dist, i - 1, dirA, dirB);
-    //             }
-    //         }else{
-    //             if (i % 2 == 0){
-    //                 i /= 2;
-    //                 i = (int) i;
-    //                 oa = ManhattanMember(dist, i, dirA, dirB);
-    //                 ob = ManhattanMember(dist + 2, i + 1, dirA, dirB);
-    //                 oc = ManhattanMember(dist + 1, i, dirA, dirB);
-    //             }else{
-    //                 i -= 1;
-    //                 i /= 2;
-    //                 i = (int) i;
-    //                 oa = ManhattanMember(dist, i, dirA, dirB);
-    //                 ob = ManhattanMember(dist + 2, i + 1, dirA, dirB);
-    //                 oc = ManhattanMember(dist + 1, i + 1, dirA, dirB);
-    //             }
-                
-    //         }
-    //     }
+        public static explicit operator int4 ( RGBA32 val ) => new int4{ x=val.R , y=val.G , z=val.B , w=val.A };
+        public static explicit operator RGBA32 ( int4 val ) => new RGBA32{ R=(byte)val.x , G=(byte)val.y , B=(byte)val.z , A=(byte)val.w };
+	
+        public static RGBA32 operator + ( RGBA32 lhs , RGBA32 rhs ) => (RGBA32)( (int4)lhs + (int4)rhs );
+        public static RGBA32 operator - ( RGBA32 lhs , RGBA32 rhs ) => (RGBA32)( (int4)lhs - (int4)rhs );
 
-    //     public void SetPos(int2 pos, ref WorldTile tile){
-    //         posRef = pos;
-    //         if (!tile.InBounds(pos + oa) || !tile.InBounds(pos + ob) || !tile.InBounds(pos + oc)){
-    //             isValid = false;
-    //             return;
-    //         }
-    //         isValid = true;
-    //         idxP.x = tile.getIdx(pos + oa);
-    //         idxP.y = tile.getIdx(pos + ob);
-    //         idxP.z = tile.getIdx(pos + oc);
-    //         valP.x = tile.height[idxP.x];
-    //         valP.y = tile.height[idxP.y];
-    //         valP.z = tile.height[idxP.z];
-    //         modified = false;
-    //     }
+        public byte this[ColorChannelByte c]{
+            get {
+                switch(c){
+                    case ColorChannelByte.R:
+                        return this.R;
+                    case ColorChannelByte.G:
+                        return this.G;
+                    case ColorChannelByte.B:
+                        return this.B;
+                    case ColorChannelByte.A:
+                        return this.A;
+                    default:
+                        throw new ArgumentOutOfRangeException("unknown color");
+                }
+            }
+            set {
+                switch(c){
+                    case ColorChannelByte.R:
+                        this.R = value;
+                        break;
+                    case ColorChannelByte.G:
+                        this.G = value;
+                        break;
+                    case ColorChannelByte.B:
+                        this.B = value;
+                        break;
+                    case ColorChannelByte.A:
+                        this.A = value;
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException("unknown color");
+                }
+            }
+        }
 
-    //     public float LowPoint(){
-    //         return cmin(valP);
-    //     }
-
-    //     public float HightPoint(){
-    //         return cmax(valP);
-    //     }
-
-    //     public bool InnerPointBelowAllOuter(){
-    //         // a closer point is lower than a further point
-    //         if(pointsIn){
-    //             return valP.x <= cmin(valP.yz);
-    //         }else{
-    //             return cmin(valP.xz) <= valP.y;
-    //         }            
-    //     }
-
-    //     public float RaiseInnerPoint(float aboveMinOuter){
-    //         modified = true;
-    //         if(pointsIn){
-    //             float diff = (cmin(valP.xz) - valP.y) + aboveMinOuter;
-    //             valP.y += diff;
-    //             return diff;
-    //         }else{
-    //             // assumes both are below the outer point
-    //             float2 diff = (valP.y - valP.xz) + aboveMinOuter;
-    //             valP.xz += diff;
-    //             return csum(diff);
-    //         }
-    //     }
-
-    //     // public bool pointsOut(){
-    //     //     // if true, A & C are closer to the reference than B
-    //     //     // if false, the opposite is true
-    //     //     // repeats as manhattan distance (0, 1, 0) >> (0, 1, 1) >> (0, 1, 0) >> (0, 1, 1) ...
-    //     //     return instanceId % 2 != 0;
-    //     // }
-
-    //     public static int2 ManhattanMember(int dist, int i, int2 dirA, int2 dirB){
-    //         int2 startA = dist * dirA;
-    //         return startA + (i * (dirB - dirA));
-    //     }
-
-    //     public void CommitHeights(ref WorldTile tile){
-    //         tile.height[idxP.x] = valP.x;
-    //         tile.height[idxP.y] = valP.y;
-    //         tile.height[idxP.z] = valP.z;
-    //     }
-
-
-
-    // }
+    }
 
     public enum Heading : byte {
-        // Exclusing direction
+        // Exclusive direction
         N    = 0b_00000001,
         S    = 0b_00000010,
         E    = 0b_00000100,

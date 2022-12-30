@@ -17,8 +17,8 @@ namespace xshazwar.noize.filter {
         public int samples = 256;
         private NativeArray<float> tmp;
 
-        void Awake(){
-            if (unityCurve != null){
+        void Validate(){
+            if(curve.IsCreated){
                 ExtractCurve();
             }
         }   
@@ -35,10 +35,13 @@ namespace xshazwar.noize.filter {
 
         public override void ResizeNativeContainers(int size){
             // Resize containers
-            
+            if (curve.IsCreated){
+                curve.Dispose();
+            }
             if(tmp.IsCreated){
                 tmp.Dispose();
             }
+            ExtractCurve();
             tmp = new NativeArray<float>(dataLength, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         }
 

@@ -18,7 +18,9 @@ namespace xshazwar.noize.generate {
             PeriodicPerlin,
             Simplex,
             RotatedSimplex,
-            Cellular
+            Cellular,
+            DomainRotatedPerlin,
+            DomainRotatedSimplex
         }
 
         static FractalJobDelegate[] jobs = {
@@ -27,7 +29,9 @@ namespace xshazwar.noize.generate {
             FractalJob<FractalGenerator<PeriodicPerlinGetter>, WriteTileData>.ScheduleParallel,
             FractalJob<FractalGenerator<SimplexGetter>, WriteTileData>.ScheduleParallel,
             FractalJob<FractalGenerator<RotatedSimplexGetter>, WriteTileData>.ScheduleParallel,
-            FractalJob<FractalGenerator<CellularGetter>, WriteTileData>.ScheduleParallel
+            FractalJob<FractalGenerator<CellularGetter>, WriteTileData>.ScheduleParallel,
+            FractalJob<FractalGenerator<PerlinGetterDomainRotated>, WriteTileData>.ScheduleParallel,
+            FractalJob<FractalGenerator<SimplexGetterDomainRotated>, WriteTileData>.ScheduleParallel
         };
 
         public FractalNoise noiseType;

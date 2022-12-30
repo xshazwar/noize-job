@@ -12,7 +12,7 @@ namespace xshazwar.noize.filter.blur {
             List<float[]> kernels = GaussianKernel.GetKernel(sigma, width);
             NativeArray<float> kbx = new NativeArray<float>(kernels[0], Allocator.Persistent);
             NativeArray<float> kbz = new NativeArray<float>(kernels[1], Allocator.Persistent);
-            JobHandle res = SeparableKernelFilter.ScheduleSeries<KernelSampleXOperator, KernelSampleZOperator>(src, tmp, resolution, width, kbx, kbz, 1f, dependency);
+            JobHandle res = SeparableKernelFilter.ScheduleSeries(src, tmp, resolution, width, kbx, kbz, 1f, dependency);
             return kbx.Dispose(
                 kbz.Dispose(
                     res
@@ -35,7 +35,7 @@ namespace xshazwar.noize.filter.blur {
             List<float[]> kernels = SmoothBlur.GetKernel(width);
             NativeArray<float> kbx = new NativeArray<float>(kernels[0], Allocator.Persistent);
             NativeArray<float> kbz = new NativeArray<float>(kernels[1], Allocator.Persistent);
-            JobHandle res = SeparableKernelFilter.ScheduleSeries<KernelSampleXOperator, KernelSampleZOperator>(src, tmp, resolution, width, kbx, kbz, 1f, dependency);
+            JobHandle res = SeparableKernelFilter.ScheduleSeries(src, tmp, resolution, width, kbx, kbz, 1f, dependency);
             return kbx.Dispose(
                 kbz.Dispose(
                     res

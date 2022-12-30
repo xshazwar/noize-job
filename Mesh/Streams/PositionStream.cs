@@ -15,6 +15,7 @@ namespace xshazwar.noize.mesh.Streams {
 		struct Stream0 {
 			public float3 position, normal;
 			public float4 tangent;
+			public float2 texCoord0;
 
 		}
 
@@ -28,7 +29,7 @@ namespace xshazwar.noize.mesh.Streams {
 			Mesh.MeshData meshData, Bounds bounds, int vertexCount, int indexCount
 		) {
 			var descriptor = new NativeArray<VertexAttributeDescriptor>(
-				3, Allocator.Temp, NativeArrayOptions.UninitializedMemory
+				4, Allocator.Temp, NativeArrayOptions.UninitializedMemory
 			);
 			descriptor[0] = new VertexAttributeDescriptor(dimension: 3);
 			descriptor[1] = new VertexAttributeDescriptor(
@@ -36,6 +37,9 @@ namespace xshazwar.noize.mesh.Streams {
 			);
 			descriptor[2] = new VertexAttributeDescriptor(
 				VertexAttribute.Tangent, dimension: 4
+			);
+			descriptor[3] = new VertexAttributeDescriptor(
+				VertexAttribute.TexCoord0, dimension: 2
 			);
 
 			meshData.SetVertexBufferParams(vertexCount, descriptor);
@@ -61,7 +65,8 @@ namespace xshazwar.noize.mesh.Streams {
 		public void SetVertex (int index, Vertex vertex) => stream0[index] = new Stream0 {
 			position = vertex.position,
 			normal = vertex.normal,
-			tangent = vertex.tangent
+			tangent = vertex.tangent,
+			texCoord0 = vertex.texCoord0
 		};
 
 		public void SetTriangle (int index, int3 triangle) => triangles[index] = triangle;
@@ -73,6 +78,7 @@ namespace xshazwar.noize.mesh.Streams {
 		struct Stream0 {
 			public float3 position, normal;
 			public float4 tangent;
+			public float2 texCoord0;
 		}
 
 		[NativeDisableContainerSafetyRestriction]
@@ -85,7 +91,7 @@ namespace xshazwar.noize.mesh.Streams {
 			Mesh.MeshData meshData, Bounds bounds, int vertexCount, int indexCount
 		) {
 			var descriptor = new NativeArray<VertexAttributeDescriptor>(
-				3, Allocator.Temp, NativeArrayOptions.UninitializedMemory
+				4, Allocator.Temp, NativeArrayOptions.UninitializedMemory
 			);
 			descriptor[0] = new VertexAttributeDescriptor(dimension: 3);
 			descriptor[1] = new VertexAttributeDescriptor(
@@ -93,6 +99,9 @@ namespace xshazwar.noize.mesh.Streams {
 			);
 			descriptor[2] = new VertexAttributeDescriptor(
 				VertexAttribute.Tangent, dimension: 4
+			);
+			descriptor[3] = new VertexAttributeDescriptor(
+				VertexAttribute.TexCoord0, dimension: 2
 			);
 			meshData.SetVertexBufferParams(vertexCount, descriptor);
 			descriptor.Dispose();
@@ -117,7 +126,8 @@ namespace xshazwar.noize.mesh.Streams {
 		public void SetVertex (int index, Vertex vertex) => stream0[index] = new Stream0 {
 			position = vertex.position,
 			normal = vertex.normal,
-			tangent = vertex.tangent
+			tangent = vertex.tangent,
+			texCoord0 = vertex.texCoord0
 		};
 
 		public void SetTriangle (int index, int3 triangle) => triangles[index] = triangle;

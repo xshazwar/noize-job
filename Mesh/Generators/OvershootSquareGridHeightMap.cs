@@ -61,7 +61,7 @@ namespace xshazwar.noize.mesh.Generators {
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private void SetVertexValues(ref Vertex v, int x, int z, NativeSlice<float> heights){
 			float t = heights[getIdx(x, z)];
-			v.position.y = (t * Height) - MarginScale(x, z);
+			v.position.y = (t * Height);// - MarginScale(x, z);
 			float l = heights[getIdx(x - 1, z)];
 			float r = heights[getIdx(x + 1, z)];
 			float u = heights[getIdx(x, z - 1)];
@@ -70,6 +70,8 @@ namespace xshazwar.noize.mesh.Generators {
 			float3 t2 = float3(0, (u - d) /(2f), 4.0f);
 			v.tangent.xyz = cross(t2, t1);
 			v.normal = normalize(float3((l - r) / 2f * NormalStrength, 2f / Height, (u - d) / 2f * NormalStrength));
+			v.texCoord0.x = ((float) x) / ((float) Resolution + 1);
+			v.texCoord0.y = ((float) z) / ((float) Resolution + 1);
 		}
 
 		public void Execute<S> (int z, S streams, NativeSlice<float> heights) where S : struct, IMeshStreams {
@@ -78,12 +80,13 @@ namespace xshazwar.noize.mesh.Generators {
 			var vertex = new Vertex();
 			vertex.position.x = - (0.5f * TileSize / Resolution);
 			vertex.position.z = (float)z * TileSize / Resolution - 0.5f; //(0.5f * TileSize / Resolution);
+
 			SetVertexValues(ref vertex, 0, z, heights);
 			streams.SetVertex(vi, vertex);
 			vi += 1;
 
 			for (int x = 1; x <= Resolution; x++, vi++, ti += 2) {
-				vertex.position.x = (float)x * TileSize / Resolution - 0.5f;
+				vertex.position.x = (float) x * TileSize / Resolution - 0.5f;
 				SetVertexValues(ref vertex, x, z, heights);
 				streams.SetVertex(vi, vertex);
 

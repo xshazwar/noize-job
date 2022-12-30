@@ -47,11 +47,16 @@ namespace xshazwar.noize.geologic {
         public StandAloneJobHandler erosionJobCtl;
         public PipelineStateManager stateManager;
 
+        // Water Control Texture
+        public Texture2D waterControl;
+        public Texture2D textureControl;
+        public ColorChannelByte byteColor = ColorChannelByte.B;
+
         // Data
-        
         private NativeArray<float> debugViz;
         public NativeArray<float> poolMap {get; private set;}
         public NativeArray<float> streamMap {get; private set;}
+        public NativeArray<float> plantDensityMap {get; private set;}
         public NativeArray<float> particleTrack;
         public NativeArray<float> originalHeightMap {get; private set;}
         public NativeArray<float> heightMap {get; private set;}
@@ -76,7 +81,7 @@ namespace xshazwar.noize.geologic {
         [SerializeField]
         public bool performErosion = true;
         [SerializeField]
-        public bool drawPools = true;
+        public bool drawPools;
 
 
         // Meshing
@@ -98,31 +103,32 @@ namespace xshazwar.noize.geologic {
         private uint[] args = new uint[5] { 0, 0, 0, 0, 0 };
         private Bounds bounds;
 
-    #if UNITY_EDITOR
-        private enum CHANNEL
-        {
-            R = 0,
-            G = 4,
-            B = 8,
-            A = 12
-        }
+        public Action OnPostInit;
+        public Action OnCompleteCycle;
 
+    #if UNITY_EDITOR
+        
         public enum MapType {
             HEIGHT,
             STREAM,
-            POOL
+            POOL,
+            PLANT
         }
 
-        public bool updateTexture = true;
-        public MapType showMap = MapType.STREAM;
+        public bool updateTexture = false;
+        public MapType showMap = MapType.HEIGHT;
         public Texture2D texture;
 
         void CreateTexture(){
             texture = new Texture2D(generatorResolution, generatorResolution, TextureFormat.RGBAFloat, false);
+            waterControl = new Texture2D(meshResolution, meshResolution, TextureFormat.RGBA32, false);
+            textureControl = new Texture2D(meshResolution, meshResolution, TextureFormat.RGBA32, false);
+            SetTextureBlackJob.ScheduleRun(waterControl, (JobHandle) default).Complete();
+            SetTextureBlackJob.ScheduleRun(textureControl, (JobHandle) default).Complete();
         }
 
         void ApplyTexture(){
-            foreach (CHANNEL c in new CHANNEL[] {CHANNEL.G, CHANNEL.B, CHANNEL.R}){ //, CHANNEL.R
+            foreach (ColorChannelFloat c in new ColorChannelFloat[] {ColorChannelFloat.G}){ // {ColorChannel.G, ColorChannel.B, ColorChannel.R}){
                 NativeSlice<float> CS = new NativeSlice<float4>(texture.GetRawTextureData<float4>()).SliceWithStride<float>((int) c);
                 if(showMap == MapType.HEIGHT){
                     CS.CopyFrom(new NativeSlice<float>(heightMap));
@@ -130,10 +136,13 @@ namespace xshazwar.noize.geologic {
                     CS.CopyFrom(new NativeSlice<float>(streamMap));
                 }else if(showMap == MapType.POOL){
                     CS.CopyFrom(new NativeSlice<float>(poolMap));
+                }else if(showMap == MapType.PLANT){
+                    CS.CopyFrom(new NativeSlice<float>(plantDensityMap));
                 }
-                
             }
             texture.Apply();
+            waterControl.Apply();
+            textureControl.Apply();
         }
     #endif
     
@@ -206,6 +215,7 @@ namespace xshazwar.noize.geologic {
             particleTrack = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_PARTICLE_TRACK"), generatorResolution * generatorResolution, NativeArrayOptions.ClearMemory);
             streamMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_STREAM"), generatorResolution * generatorResolution, NativeArrayOptions.ClearMemory);
             poolMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_POOL"), generatorResolution * generatorResolution, NativeArrayOptions.ClearMemory); // doesn't need clear
+            plantDensityMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_PLANTDENSITYMAP"), generatorResolution * generatorResolution, NativeArrayOptions.ClearMemory); // doesn't need clear
             
             poolBuffer = new ComputeBuffer(heightMap.Length, 4); // sizeof(float)
             heightBuffer = new ComputeBuffer(heightMap.Length, 4); // sizeof(float)
@@ -238,11 +248,13 @@ namespace xshazwar.noize.geologic {
             #endif
             ready = true;
             ApplyTexture();
+            OnPostInit?.Invoke();
             Debug.Log("LiveErosion Ready!");
         }
         
         private void ResetHeightMap(){
             NativeArray<float>.Copy(originalHeightMap, heightMap);
+            ResetPlantMap();
             ResetWaterMaps();
         }
 
@@ -252,6 +264,10 @@ namespace xshazwar.noize.geologic {
             try{
                 PushBuffer();
             }catch{}
+        }
+
+        private void ResetPlantMap(){
+            ClearArray<float>(plantDensityMap);
         }
 
         unsafe void ClearArray<T>(NativeArray<T> to_clear) where T : struct
@@ -323,6 +339,7 @@ namespace xshazwar.noize.geologic {
                     ApplyTexture();
                 }
                 #endif
+                OnCompleteCycle?.Invoke();
             }else if((updateContinuous || updateSingle) && !erosionJobCtl.isRunning){
                 updateSingle = false;
                 TriggerQueuedBeyerMT();
@@ -340,10 +357,16 @@ namespace xshazwar.noize.geologic {
                     if(erosionSettings.ENABLE_THERMAL && erosionSettings.BEHAVIOR != ErosionMode.ONLY_FLOW_WATER){
                         handle = ThermalErosionFilter.Schedule(heightSlice, erosionSettings.TALUS, erosionSettings.THERMAL_STEP, tileSize / tileHeight, erosionSettings.THERMAL_CYCLES, generatorResolution, handle);
                     }
-                    handle = JobHandle.CombineDependencies(
+                    if(erosionSettings.BEHAVIOR != ErosionMode.ONLY_FLOW_WATER){
+                        handle = JobHandle.CombineDependencies(
                             FillBeyerQueueJob.ScheduleParallel(particleQueue, erosionParams, generatorResolution, QUEUE_SIZE, handle),
                             ClearQueueJob<ErosiveEvent>.ScheduleRun(erosions, handle),
                             ClearMultiDict<int, ErosiveEvent>.ScheduleRun(events, handle));
+                    }else{
+                        handle = JobHandle.CombineDependencies(
+                            ClearQueueJob<ErosiveEvent>.ScheduleRun(erosions, handle),
+                            ClearMultiDict<int, ErosiveEvent>.ScheduleRun(events, handle));
+                    }
                     handle = CopyBeyerQueueJob.ScheduleRun(particles, particleQueue, handle);
                     handle = QueuedBeyerCycleMultiThreadJob.ScheduleParallel(heightMap, poolMap, streamMap, particleTrack, particles, events, erosionParams, EVENT_LIMIT, generatorResolution, handle);
                     handle = ProcessBeyerErosiveEventsJob.ScheduleRun(heightMap, poolMap, streamMap, particleTrack, erosions, events, erosionParams, generatorResolution, handle);
@@ -356,7 +379,22 @@ namespace xshazwar.noize.geologic {
                 }
                     
             }
-            // // handle = GaussFilter.Schedule(heightSlice, tmpSlice, 3, GaussSigma.s1d50, generatorResolution, handle);
+            
+            
+            // wet
+            handle = SetRGBA32Job.ScheduleRun(poolMap, waterControl, ColorChannelByte.R, handle, 1000f);
+            // puddle
+            handle = SetRGBA32Job.ScheduleRun(poolMap, waterControl, ColorChannelByte.G, handle, 1000f);
+            // stream
+            handle = SetRGBA32Job.ScheduleRun(streamMap, waterControl, ColorChannelByte.B, handle, 2f);
+
+            // cavity
+            // handle = SetRGBA32Job.ScheduleRun(streamMap, textureControl, ColorChannelByte.G, handle, 3f);
+            handle = CurvitureMapJob.ScheduleRun(textureControl, heightMap, erosionParams, ColorChannelByte.G, generatorResolution, handle);
+            
+            // erosion
+            handle = SetRGBA32Job.ScheduleRun(streamMap, textureControl, ColorChannelByte.A, handle, 1f);
+            
             if(performErosion){
                 handle = ScheduleMeshUpdate(handle);
              }

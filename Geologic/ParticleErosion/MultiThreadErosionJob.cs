@@ -62,6 +62,7 @@ namespace xshazwar.noize.geologic {
         NativeList<BeyerParticle> particles;
 
         [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
         NativeQueue<BeyerParticle> particleQueue;
 
         public void Execute(){
@@ -119,6 +120,7 @@ namespace xshazwar.noize.geologic {
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
     public struct ClearQueueJob<T>: IJob where T: struct{
         [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
         NativeQueue<T> queue;
 
         public void Execute(){
@@ -140,14 +142,11 @@ namespace xshazwar.noize.geologic {
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
     public struct ClearMultiDict<K, V>: IJob where K: struct, IEquatable<K> where V: struct{
         [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
         NativeParallelMultiHashMap<K, V> dict;
 
         public void Execute(){
-            int dSize = dict.Count();
-            Debug.LogWarning($"dictionary size utilization? {dSize}");
             dict.Clear();
-            dSize = dict.Count();
-            Debug.LogWarning($"dictionary size utilization >> {dSize}");
         }
 
         public static JobHandle ScheduleRun(
@@ -179,7 +178,6 @@ namespace xshazwar.noize.geologic {
             NativeArray<float> flow,
             NativeArray<float> track,
             NativeList<BeyerParticle> particles,
-            // NativeQueue<ErosiveEvent> events,
             NativeParallelMultiHashMap<int, ErosiveEvent> events,
             ErosionParameters ep,
             int eventLimit,
@@ -243,6 +241,7 @@ namespace xshazwar.noize.geologic {
     public struct PoolAutomataJob: IJobFor {
         WorldTile tile;
         [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
         NativeQueue<BeyerParticle>.ParallelWriter particleWriter;
         int res;
         int xoff;
@@ -357,6 +356,57 @@ namespace xshazwar.noize.geologic {
     }
 
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct CurvitureMapJob: IJobFor {
+        
+        WorldTile tile;
+        [NativeDisableContainerSafetyRestriction]
+        NativeSlice<byte> target;
+        public int dataRes;
+        public int offset;
+        public int meshRes;
+
+        public void Execute(int z){
+            float l = tile.ep.PATCH_RES.x;
+            float v = 0f;
+            int srcZ = z + offset;
+            int srcI = 0;
+            int i = 0;
+            int2 pos = new int2(srcZ, 0);
+            // int2 pos = new int2(0, srcZ);
+            for (int x = 0; x < meshRes; x++){
+                pos.y = x + offset;
+                i = z * meshRes + x;
+                v = tile.Curviture(pos, l);
+                target[i] = (byte) (clamp(v, 0f, 1f) * 255f);
+            }
+        }
+
+        public static JobHandle ScheduleRun(
+            Texture2D texture,
+            NativeArray<float> height,
+            ErosionParameters ep,
+            ColorChannelByte target,
+            int res,
+            JobHandle deps
+        ){
+            int meshRes = texture.height;
+            int offset = ((res - meshRes) / 2);
+            NativeSlice<byte> data = new NativeSlice<RGBA32>(texture.GetRawTextureData<RGBA32>()).SliceWithStride<byte>((int) target);
+            var job = new CurvitureMapJob {
+                target = data,
+                dataRes = res,
+                meshRes = meshRes,
+                offset = offset,
+                tile = new WorldTile {
+                    ep = ep,
+                    height = height
+                }
+            };
+            return job.ScheduleParallel(meshRes, 1, deps);
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
     public struct ErodeHeightMaps: IJob {
 
         FlowMaster fm;
@@ -399,69 +449,127 @@ namespace xshazwar.noize.geologic {
         }
     }
 
-    // [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
-    // public struct ProcessBeyerErosiveEventsJob: IJob {
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct SetRGBA32Job : IJobFor
+    {
+        ColorChannelByte color;
+        [ReadOnly]
+        public NativeArray<float> src;
+        [NativeDisableContainerSafetyRestriction]
+        public NativeSlice<byte> data;
+        public int dataRes;
+        public int offset;
+        public int meshRes;
+        public float scale;
 
-    //     ProfilerMarker profiler_;
-    //     FlowMaster fm;
- 
-    //     public void Execute(){
-    //         NativeParallelHashMap<int, ErosiveEvent> erosions = new NativeParallelHashMap<int, ErosiveEvent>(fm.tile.ep.TILE_RES.x * fm.tile.ep.TILE_RES.y, Allocator.Temp);
-            
-    //         ErosiveEvent evt = new ErosiveEvent();
-    //         NativeArray<float> kernel3 = new NativeArray<float>(3, Allocator.Temp){
-    //             [0] = 0.30780132912347f,
-    //             [1] = 0.38439734175306006f,
-    //             [2] = 0.30780132912347f
-    //         };
-    //         NativeArray<float> kernel5 = new NativeArray<float>(5, Allocator.Temp){
-    //             [0] = 0.12007838424321349f,
-    //             [1] = 0.23388075658535032f,
-    //             [2] = 0.29208171834287244f,
-    //             [3] = 0.23388075658535032f,
-    //             [4] = 0.12007838424321349f
-    //         };
-    //         // while(fm.events.TryDequeue(out evt)){
-    //         //     fm.CommitBeyerUpdateToMaps(evt, ref kernel3, ref kernel5);
-    //         // }
-    //         // float erode = 0f;
-    //         float deposit = 0f;
-    //         profiler_.Begin();
-    //         while(fm.events.TryDequeue(out evt)){
-    //             fm.HandleBeyerEvent(ref evt, ref erosions, ref kernel3, ref deposit);
-    //         }
-    //         profiler_.End();
-    //         // Debug.Log($"total erosion {erode} || total deposition {deposit}");
-    //         // Debug.Log($"total deposition {deposit}");
-    //         fm.ProcessErosivePiles(ref erosions);
-    //     }
+        public void Execute (int z)
+        {
+            // z += offset;
+            int srcZ = z + offset;
+            int srcI = 0;
+            int i = 0;
+            for (int x = 0; x < meshRes; x++){
+            // for (int x = offset; x < dataRes - offset; x++){
+                srcI = srcZ * dataRes + x + offset;
+                i = z * meshRes + x;
+                byte b = (byte) (clamp((src[srcI] * scale), 0, 1f) * 255f);
+                data[i] = b;
+            }
+        }
 
-    //     public static JobHandle ScheduleRun(
-    //         NativeArray<float> height,
-    //         NativeArray<float> pool,
-    //         NativeArray<float> flow,
-    //         NativeArray<float> track,
-    //         NativeQueue<ErosiveEvent> events,
-    //         ErosionParameters ep,
-    //         int res,
-    //         JobHandle deps
-    //     ){
-    //         ProfilerMarker marker_ = new ProfilerMarker("PoolColapse");
-    //         var job = new ProcessBeyerErosiveEventsJob {
-    //             profiler_ = marker_,
-    //             fm = new FlowMaster {
-    //                 tile = new WorldTile {
-    //                     // res = new int2(res, res),
-    //                     ep = ep,
-    //                     height = height,
-    //                     pool = pool,
-    //                     flow = flow,
-    //                     track = track
-    //                 },
-    //                 events = events
-    //             }
-    //         };
-    //         return job.Schedule(deps);
-    //     }
-    // }
+        public static JobHandle ScheduleRun(
+            NativeArray<float> src,
+            Texture2D texture,
+            ColorChannelByte target,
+            JobHandle deps,
+            float scale = 1f
+        ){
+            NativeSlice<byte> data = new NativeSlice<RGBA32>(texture.GetRawTextureData<RGBA32>()).SliceWithStride<byte>((int) target);
+            int meshRes = texture.height;
+            int dataRes = (int) sqrt(src.Length);
+            int offset = ((dataRes - meshRes) / 2);
+            // Debug.LogWarning($"{dataRes} >> {meshRes} + 2 * {offset}");
+            var job = new SetRGBA32Job {
+                color = target,
+                src = src,
+                data = data,
+                dataRes = dataRes,
+                meshRes = meshRes,
+                offset = offset,
+                scale = scale
+            };
+            return job.ScheduleParallel(meshRes, 1, deps);
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+    public struct SetRGBA32ColorJob : IJobFor
+    {
+        int targetColorIdx;
+        ColorChannelByte color;
+        float filter;
+        int idxCutoff;
+        public NativeSlice<RGBA32> data;
+        public void Execute (int i)
+        {
+            RGBA32 d = data[i];
+            if(i <= idxCutoff){
+                d[(ColorChannelByte)(targetColorIdx % 4)] = (byte) 255f;
+                // d[(ColorChannelByte)(targetColorIdx % 4)] = (byte) ((0.5 + (sin(i / 520 ))) * 255);
+            }else{
+                d[(ColorChannelByte)(targetColorIdx % 4)] = (byte) 0;
+            }
+            d[(ColorChannelByte)((targetColorIdx + 1) % 4)] = (byte) 0;
+            d[(ColorChannelByte)((targetColorIdx + 2) % 4)] = (byte) 0;
+            d[(ColorChannelByte)((targetColorIdx + 3) % 4)] = (byte) 0;
+            data[i] = d;
+            // if(src[i] >= filter){
+            //     data[i] = (byte) (src[i] * 256f);
+            // }else{
+            //     data[i] = (byte) 1f;
+            // }
+        }
+        public static JobHandle ScheduleRun(
+            Texture2D texture,
+            ColorChannelByte target,
+            JobHandle deps,
+            float filterLevel = 0.05f
+        ){
+            // NativeSlice<byte> data = new NativeSlice<RGBA32>(texture.GetRawTextureData<RGBA32>()).SliceWithStride<byte>();
+            int size = texture.width * texture.height;
+            var job = new SetRGBA32ColorJob {
+                idxCutoff = size, //texture.Length, // (int) (src.Length / 2),
+                targetColorIdx = ((int) target) + 4,
+                color = target,
+                data = new NativeSlice<RGBA32>(texture.GetRawTextureData<RGBA32>()),
+                filter = filterLevel
+            };
+            return job.ScheduleParallel(size, 1, deps);
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
+    public struct SetTextureBlackJob : IJobFor
+    {
+        public NativeSlice<RGBA32> data;
+        public void Execute (int i)
+        {
+            RGBA32 d = data[i];
+            d.R = (byte) 0;
+            d.G = (byte) 0;
+            d.B = (byte) 0;
+            d.A = (byte) 0;
+            data[i] = d;
+        }
+        public static JobHandle ScheduleRun(
+            Texture2D texture,
+            JobHandle deps
+        ){
+            int size = texture.width * texture.height;
+            var job = new SetTextureBlackJob {
+                data = new NativeSlice<RGBA32>(texture.GetRawTextureData<RGBA32>())
+            };
+            return job.ScheduleParallel(size, 1, deps);
+        }
+    }
 }

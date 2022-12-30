@@ -153,6 +153,26 @@ namespace xshazwar.noize.generate {
         }
     }
 
+    public struct PerlinGetterDomainRotated: IMakeNoise {
+        private const float RV = 1f;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float NoiseValue(float x, float z){
+            float xz = x + z;
+            float s2 = xz * -0.211324865405187f;
+            float xr = x + s2;
+            float zr = z + s2;
+            float yr = xz * -0.577350269189626f;
+            float3 coord = float3(xr, zr, yr) ;
+            return Rectify(noise.cnoise(coord));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float Rectify(float value){
+            return (RV + value) / 2 * RV;
+        }
+    }
+
     public struct PeriodicPerlinGetter: IMakeNoise {
         private const float RV = 1f;
 
@@ -211,6 +231,26 @@ namespace xshazwar.noize.generate {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float NoiseValue(float x, float z){
             float2 coord = float2(x, z) ;
+            return Rectify(noise.snoise(coord));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float Rectify(float value){
+            return (RV + value) / 2 * RV;
+        }
+    }
+
+    public struct SimplexGetterDomainRotated: IMakeNoise {
+        private const float RV = 1f;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float NoiseValue(float x, float z){
+            float xz = x + z;
+            float s2 = xz * -0.211324865405187f;
+            float xr = x + s2;
+            float zr = z + s2;
+            float yr = xz * -0.577350269189626f;
+            float3 coord = float3(xr, zr, yr) ;
             return Rectify(noise.snoise(coord));
         }
 

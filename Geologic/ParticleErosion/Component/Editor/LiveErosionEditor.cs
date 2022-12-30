@@ -18,10 +18,13 @@ namespace xshazwar.noize.editor {
         SerializedProperty erosionSettings;
         SerializedProperty updateTexture;
         SerializedProperty drawPools;
+        SerializedProperty poolColor;
         Texture2D texture;
 
         void OnEnable(){
-            tex2d = serializedObject.FindProperty("texture");
+            // tex2d = serializedObject.FindProperty("texture");
+            // tex2d = serializedObject.FindProperty("waterControl");
+            tex2d = serializedObject.FindProperty("textureControl");
             updateContinuous = serializedObject.FindProperty("updateContinuous");
             updateSingle = serializedObject.FindProperty("updateSingle");
             resetLand = serializedObject.FindProperty("resetLand");
@@ -31,6 +34,7 @@ namespace xshazwar.noize.editor {
             erosionSettings = serializedObject.FindProperty("erosionSettings");
             updateTexture = serializedObject.FindProperty("updateTexture");
             drawPools = serializedObject.FindProperty("drawPools");
+            poolColor = serializedObject.FindProperty("byteColor");
             
             texture = tex2d.objectReferenceValue as Texture2D;
         }
@@ -50,9 +54,12 @@ namespace xshazwar.noize.editor {
             EditorGUILayout.PropertyField(performErosion);
             EditorGUILayout.PropertyField(updateSingle);
             EditorGUILayout.PropertyField(updateContinuous);
+            EditorGUILayout.PropertyField(poolColor);
+            
             if((bool)updateTexture.boolValue){
                 EditorGUILayout.PropertyField(showMap);
                 Rect space = EditorGUILayout.BeginHorizontal();
+                // GUILayout.Box(texture, GUILayout.Width (512), GUILayout.Height (512));
                 EditorGUI.DrawPreviewTexture(space, texture);
                 EditorGUILayout.TextArea("", GUIStyle.none, GUILayout.Height(1024));
                 EditorGUILayout.EndHorizontal();

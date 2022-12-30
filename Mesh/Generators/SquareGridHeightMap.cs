@@ -75,11 +75,12 @@ namespace xshazwar.noize.mesh.Generators {
 			float3 t2 = float3(0, (u - d) /(2f), 4.0f);
 			v.tangent.xyz = cross(t2, t1);
 			v.normal = normalize(float3((l - r) / 2f * NormalStrength, 2f / Height, (u - d) / 2f * NormalStrength));
+			v.texCoord0.x = ((float) x) / ((float) Resolution + 1);
+			v.texCoord0.y = ((float) z) / ((float) Resolution + 1);
 		}
 
 		public void Execute<S> (int z, S streams, NativeSlice<float> heights) where S : struct, IMeshStreams {
 			int vi = (Resolution + 1) * z, ti = 2 * Resolution * (z - 1);
-
 			var vertex = new Vertex();
 			vertex.position.x = - (0.5f * TileSize / Resolution);
 			vertex.position.z = (float)z * TileSize / Resolution - 0.5f; //(0.5f * TileSize / Resolution);

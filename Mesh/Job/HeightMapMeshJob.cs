@@ -38,7 +38,7 @@ namespace xshazwar.noize.mesh {
 			job.generator.TileSize = tileSize;
 			job.generator.Height = tileHeight;
 			job.generator.MarginPix = marginPix;
-			job.generator.NormalStrength = 1f;
+			job.generator.NormalStrength = 8f;
             job.heights = heights;
 			job.streams.Setup(
 				meshData,

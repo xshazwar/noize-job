@@ -32,6 +32,7 @@ namespace xshazwar.noize.geologic {
         public float SURFACE_EVAPORATION_RATE;
         public float POOL_PLACEMENT_MULTIPLIER;
         public float TRACK_PLACEMENT_MULTIPLIER;
+        public float FLOW_LOSS_RATE = 0.05f;
         
         [Space(10)]
         [Header("Deposition Behavior")]
@@ -68,6 +69,7 @@ namespace xshazwar.noize.geologic {
             SURFACE_EVAPORATION_RATE = 0.1f;
             POOL_PLACEMENT_MULTIPLIER = 0.5f;
             TRACK_PLACEMENT_MULTIPLIER = 80f;
+            FLOW_LOSS_RATE = 0.05f;
 
             PILING_RADIUS = 15;
             MIN_PILE_INCREMENT = 1f;
@@ -97,6 +99,7 @@ namespace xshazwar.noize.geologic {
                 SURFACE_EVAPORATION_RATE = this.SURFACE_EVAPORATION_RATE,
                 POOL_PLACEMENT_MULTIPLIER = BEHAVIOR == ErosionMode.ONLY_THERMAL_EROSION ? 0f : this.POOL_PLACEMENT_MULTIPLIER,
                 TRACK_PLACEMENT_MULTIPLIER = this.TRACK_PLACEMENT_MULTIPLIER,
+                FLOW_LOSS_RATE = this.FLOW_LOSS_RATE,
 
                 PILING_RADIUS = this.PILING_RADIUS,
                 MIN_PILE_INCREMENT = this.MIN_PILE_INCREMENT,
