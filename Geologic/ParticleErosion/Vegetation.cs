@@ -40,8 +40,8 @@ namespace xshazwar.noize.geologic {
             Plant p = new Plant {
                 typeIdx = this.typeIdx,
                 growth = (byte) 20,
-                xOff = (byte)((pos.x / tile.ep.TILE_RES.x) * 256),
-                zOff = (byte)((pos.y / tile.ep.TILE_RES.y) * 256),
+                xOff = (byte)((pos.x / tile.tm.TILE_RES.x) * 256),
+                zOff = (byte)((pos.y / tile.tm.TILE_RES.y) * 256),
                 height = 0f,
                 idx = 0,
                 dead = false
@@ -67,7 +67,8 @@ namespace xshazwar.noize.geologic {
         }
 
         public bool CanSurvive(int idx, ref WorldTile tile){
-            float3 norm = tile.Normal(tile.getPos(idx));
+            float4 n;
+            float3 norm = tile.Normal(tile.getPos(idx), out n);
             if (tile.plants[idx] > maxDensity) return false;
             if (tile.pool[idx] > maxPoolSurvival) return false;
             if (tile.flow[idx] > maxStreamSurvival) return false;

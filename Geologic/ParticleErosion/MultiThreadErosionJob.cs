@@ -10,6 +10,7 @@ using UnityEngine;
 
 using static Unity.Mathematics.math;
 
+using xshazwar.noize.tile;
 using xshazwar.noize.pipeline;
 using xshazwar.noize.filter;
 
@@ -21,18 +22,24 @@ namespace xshazwar.noize.geologic {
         FlowMaster fm;
         [NativeDisableContainerSafetyRestriction]
         NativeQueue<BeyerParticle>.ParallelWriter particleWriter;
-        ErosionParameters ep;
+        // ErosionParameters ep;
+        // TileSetMeta tm;
 
+        int generationRound;
+        int maxParticles;
         int RND_SEED;
         int COUNT;
 
+
         public void Execute(int i){
-            fm.CreateRandomParticles(COUNT, RND_SEED + i, ep, ref particleWriter);
+            fm.CreateRandomParticles(i, generationRound, maxParticles, COUNT, RND_SEED + i, ref particleWriter);
         }
 
         public static JobHandle ScheduleParallel(
             NativeQueue<BeyerParticle> particles,
             ErosionParameters ep,
+            TileSetMeta tm,
+            int generationRound,
             int res,
             int maxParticles,
             JobHandle deps,
@@ -41,17 +48,23 @@ namespace xshazwar.noize.geologic {
             int threads = concurrency;
             int currentParticles = particles.Count;
             int seed = UnityEngine.Random.Range(0, Int32.MaxValue);
-            int required = max(1000, maxParticles - currentParticles);
+            // int required = max(1000, maxParticles - currentParticles);
+            int required = max(1, maxParticles - currentParticles);
+            // Debug.Log($"{required} new particles needed");
             var job = new FillBeyerQueueJob {
+                generationRound = generationRound,
+                maxParticles = maxParticles,
                 fm = new FlowMaster {
+                    ep = ep,
                     tile = new WorldTile {
-                        ep = ep
+                        tm = tm
                     }
                 },
-                ep = ep,
+                // ep = ep,
+                // tm = tm,
                 particleWriter = particles.AsParallelWriter(),
                 RND_SEED = seed,
-                COUNT = (int) floor(required / 10)
+                COUNT = (int) max(floor(required / concurrency), 1)
             };
             return job.Schedule<FillBeyerQueueJob>(threads, 1, deps);
         }
@@ -101,14 +114,14 @@ namespace xshazwar.noize.geologic {
 
         public static JobHandle ScheduleRun(
             NativeArray<float> height,
-            ErosionParameters ep,
+            TileSetMeta tm,
             JobHandle deps
         ){
             
             var job = new TestPileSolverJob {
                 solver = new PileSolver{
                 tile = new WorldTile {
-                        ep = ep,
+                        tm = tm,
                         height = height
                     }
                 }
@@ -168,8 +181,13 @@ namespace xshazwar.noize.geologic {
         NativeArray<BeyerParticle> particles;
 
         public void Execute(int i){
+            NeighborhoodHelper nbh = new NeighborhoodHelper {
+                nb = new NativeArray<int>(8, Allocator.Temp),
+                nbSort = new NativeArray<int>(8, Allocator.Temp),
+                nbDir = NeighborhoodHelper.generateLookupDir()
+            };
             BeyerParticle p = particles[i];
-            fm.BeyerSimultaneousDescentSingle(ref p);
+            fm.BeyerSimultaneousDescentSingle(ref p, ref nbh);
         }
 
         public static JobHandle ScheduleParallel(
@@ -180,20 +198,21 @@ namespace xshazwar.noize.geologic {
             NativeList<BeyerParticle> particles,
             NativeParallelMultiHashMap<int, ErosiveEvent> events,
             ErosionParameters ep,
+            TileSetMeta tm,
             int eventLimit,
             int res,
             JobHandle deps
         ){
-            int seed = UnityEngine.Random.Range(0, Int32.MaxValue);
             var job = new QueuedBeyerCycleMultiThreadJob {
                 fm = new FlowMaster {
                     tile = new WorldTile {
-                        ep = ep,
+                        tm = tm,
                         height = height,
                         pool = pool,
                         flow = flow,
                         track = track
                     },
+                    ep = ep,
                     events = events,
                     eventWriter = events.AsParallelWriter()
                 },
@@ -208,10 +227,12 @@ namespace xshazwar.noize.geologic {
         WorldTile tile;
         int flip;
         int res;
+        float FLOW_LOSS_RATE;
+        float SURFACE_EVAPORATION_RATE;
 
         public void Execute(int z){
             for (int x = 0; x < res; x++){
-                tile.UpdateFlowMapFromTrack(x, z);
+                tile.UpdateFlowMapFromTrack(x, z, FLOW_LOSS_RATE, SURFACE_EVAPORATION_RATE);
             }
         }
 
@@ -220,18 +241,20 @@ namespace xshazwar.noize.geologic {
             NativeArray<float> flow,
             NativeArray<float> track,
             ErosionParameters ep,
+            TileSetMeta tm,
             int res,
             JobHandle deps
         ){
             var job = new UpdateFlowFromTrackJob(){
                 res = res,
                 tile = new WorldTile {
-                    ep = ep,
+                    tm = tm,
                     pool = pool,
                     flow = flow,
                     track = track
-                    // res = new int2(res, res)
-                }
+                },
+                FLOW_LOSS_RATE = ep.FLOW_LOSS_RATE,
+                SURFACE_EVAPORATION_RATE = ep.SURFACE_EVAPORATION_RATE
             };
             return job.ScheduleParallel(res, 1, deps);
         }
@@ -240,6 +263,7 @@ namespace xshazwar.noize.geologic {
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
     public struct PoolAutomataJob: IJobFor {
         WorldTile tile;
+        ErosionParameters ep;
         [NativeDisableContainerSafetyRestriction]
         [NoAlias]
         NativeQueue<BeyerParticle>.ParallelWriter particleWriter;
@@ -258,7 +282,7 @@ namespace xshazwar.noize.geologic {
             z += zoff;
             for (int x = offset; x < res; x += 2){
                 if(tile.pool[tile.getIdx(x,z)] > 0f) {
-                    tile.SpreadPool(x, z, ref buff, ref particleWriter, drainParticles);
+                    tile.SpreadPool(x, z, ref buff, ref particleWriter, ref ep, drainParticles);
                 }
             }
         }
@@ -268,6 +292,7 @@ namespace xshazwar.noize.geologic {
             NativeArray<float> height,
             NativeQueue<BeyerParticle> particleQueue,
             ErosionParameters ep,
+            TileSetMeta tm,
             int iterations,
             int res,
             bool drainParticles,
@@ -275,11 +300,12 @@ namespace xshazwar.noize.geologic {
         ){
             JobHandle handle = deps;
             var job = new PoolAutomataJob(){
+                ep = ep,
                 res = res,
                 drainParticles = drainParticles,
                 particleWriter = particleQueue.AsParallelWriter(),
                 tile = new WorldTile {
-                    ep = ep,
+                    tm = tm,
                     pool = pool,
                     height = height
                     // res = new int2(res, res)
@@ -334,6 +360,7 @@ namespace xshazwar.noize.geologic {
             NativeQueue<ErosiveEvent> erosions,
             NativeParallelMultiHashMap<int, ErosiveEvent> events,
             ErosionParameters ep,
+            TileSetMeta tm,
             int res,
             JobHandle deps
         ){
@@ -342,12 +369,13 @@ namespace xshazwar.noize.geologic {
                 erosionWriter = erosions.AsParallelWriter(),
                 fm = new FlowMaster {
                     tile = new WorldTile {
-                        ep = ep,
+                        tm = tm,
                         height = height,
                         pool = pool,
                         flow = flow,
                         track = track
                     },
+                    ep = ep,
                     events = events
                 }
             };
@@ -366,7 +394,7 @@ namespace xshazwar.noize.geologic {
         public int meshRes;
 
         public void Execute(int z){
-            float l = tile.ep.PATCH_RES.x;
+            float l = tile.tm.PATCH_RES.x;
             float v = 0f;
             int srcZ = z + offset;
             int srcI = 0;
@@ -384,7 +412,7 @@ namespace xshazwar.noize.geologic {
         public static JobHandle ScheduleRun(
             Texture2D texture,
             NativeArray<float> height,
-            ErosionParameters ep,
+            TileSetMeta tm,
             ColorChannelByte target,
             int res,
             JobHandle deps
@@ -398,7 +426,7 @@ namespace xshazwar.noize.geologic {
                 meshRes = meshRes,
                 offset = offset,
                 tile = new WorldTile {
-                    ep = ep,
+                    tm = tm,
                     height = height
                 }
             };
@@ -432,15 +460,17 @@ namespace xshazwar.noize.geologic {
             NativeArray<float> height,
             NativeQueue<ErosiveEvent> erosions,
             ErosionParameters ep,
+            TileSetMeta tm,
             int res,
             JobHandle deps
         ){
             var job = new ErodeHeightMaps {
                 erosions = erosions,
                 fm = new FlowMaster {
+                    ep = ep,
                     tile = new WorldTile {
                         // res = new int2(res, res),
-                        ep = ep,
+                        tm = tm,
                         height = height
                     }
                 }

@@ -11,31 +11,40 @@ namespace xshazwar.noize.geologic {
         
         [Space(10)]
         [Header("Particle Behavior")]
+        [Space(3)]
+        [Header("Capacity / Rate")]
+        public float CAPACITY;
+        public float EROSION;
+        public float DEPOSITION;
+        [Space(3)]
+        [Header("Force Coefficients")]
         public float INERTIA;
         public float GRAVITY;
         public float DRAG;
         public float FRICTION;
-        public float EVAP;
-        public float EROSION;
-        public float DEPOSITION;
-        [Space(10)]
+        [Header("Pathfinding")]
+        public float FLOW_HEIGHT_CONTRIBUTION;
+        [Space(3)]
+        [Header("Particle Death Conditions")]
         public float SLOW_CULL_ANGLE;
         public float SLOW_CULL_SPEED;
-        public float CAPACITY;
         public int MAXAGE;
-        
+        public float EVAP;
+
         [Space(10)]
         [Header("Water Behavior")]
         public int WATER_STEPS;
-        
-        [Space(10)]
-        public float SURFACE_EVAPORATION_RATE;
+        [Space(3)]
+        [Header("Deposition")]
         public float POOL_PLACEMENT_MULTIPLIER;
         public float TRACK_PLACEMENT_MULTIPLIER;
+        [Space(3)]
+        [Header("Evaporation")]
+        public float SURFACE_EVAPORATION_RATE;
         public float FLOW_LOSS_RATE = 0.05f;
         
         [Space(10)]
-        [Header("Deposition Behavior")]
+        [Header("Soil Deposition Behavior")]
         public int PILING_RADIUS;
         public float MIN_PILE_INCREMENT;
         public float PILE_THRESHOLD; // in meters
@@ -60,6 +69,8 @@ namespace xshazwar.noize.geologic {
             EVAP = 0.01f;
             EROSION = 1.0f;
             DEPOSITION = 0.1f;
+            FLOW_HEIGHT_CONTRIBUTION = 25f;
+
             SLOW_CULL_ANGLE = 3f;
             SLOW_CULL_SPEED = 0.11f;
             CAPACITY = 3f;
@@ -81,8 +92,8 @@ namespace xshazwar.noize.geologic {
             THERMAL_CYCLES = 1;
         }
 
-        public ErosionParameters AsParameters(int resX, int resZ, float height, float width){
-            return new ErosionParameters(resX, resZ, height, width)
+        public ErosionParameters AsParameters(){
+            return new ErosionParameters()
             {
                 INERTIA = this.INERTIA,
                 GRAVITY = this.GRAVITY,
@@ -91,10 +102,13 @@ namespace xshazwar.noize.geologic {
                 EVAP = this.EVAP,
                 EROSION = this.EROSION,
                 DEPOSITION = this.DEPOSITION,
+                FLOW_HEIGHT_CONTRIBUTION = this.FLOW_HEIGHT_CONTRIBUTION,
+
                 SLOW_CULL_ANGLE = this.SLOW_CULL_ANGLE,
                 SLOW_CULL_SPEED = this.SLOW_CULL_SPEED,
                 CAPACITY = BEHAVIOR == ErosionMode.ALL_EROSION ? this.CAPACITY: 0,
                 MAXAGE = this.MAXAGE,
+                TERMINAL_VELOCITY = 1f / this.DRAG,
 
                 SURFACE_EVAPORATION_RATE = this.SURFACE_EVAPORATION_RATE,
                 POOL_PLACEMENT_MULTIPLIER = BEHAVIOR == ErosionMode.ONLY_THERMAL_EROSION ? 0f : this.POOL_PLACEMENT_MULTIPLIER,

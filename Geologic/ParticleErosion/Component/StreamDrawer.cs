@@ -17,12 +17,11 @@ using Unity.Mathematics;
 using xshazwar.noize.pipeline;
 using xshazwar.noize;
 using xshazwar.noize.filter.blur;
-using xshazwar.noize.scripts;
 using xshazwar.noize.mesh;
 using xshazwar.noize.mesh.Generators;
 using xshazwar.noize.mesh.Streams;
-
-// using JBooth.MicroSplat;
+using xshazwar.noize.scripts;
+using xshazwar.noize.tile;
 
 namespace xshazwar.noize.geologic {
     
@@ -30,6 +29,7 @@ namespace xshazwar.noize.geologic {
     public class StreamDrawer : MonoBehaviour {
         
         private int meshResolution = 512;
+        private bool isSetup = false;
 
         CustomRenderTexture buffer0;
         CustomRenderTexture buffer1;
@@ -37,14 +37,14 @@ namespace xshazwar.noize.geologic {
         MeshRenderer mRenderer;
         public Material referenceMat;
         Material updateMat;
-        LiveErosion erosionCtl;
+        IProvideGeodata geoProvider;
 
         public bool updateMaterial = false;
 
         void Awake(){
+            geoProvider = GetComponent<IProvideGeodata>();
+            geoProvider.OnGeodataReady += ErosionReady;
             this.enabled = false;
-            erosionCtl = GetComponent<LiveErosion>();
-            erosionCtl.OnPostInit += ErosionReady;
         }
 
         void Update(){
@@ -58,15 +58,20 @@ namespace xshazwar.noize.geologic {
             this.enabled = true;
         }
 
+        public void SetParams(TileSetMeta tileMeta, Material mat){
+            meshResolution = tileMeta.TILE_RES.x;
+            referenceMat = mat;
+        }
+
         void OnEnable(){
             mRenderer = GetComponent<MeshRenderer>();
-            meshResolution = erosionCtl.meshResolution;
             InitBuffers();
             SetupMaterial();
             // buffer0.Update();
             // buffer1.Update();
             mRenderer.material = updateMat;
-            erosionCtl.OnCompleteCycle += UpdateBuffers;
+            geoProvider.OnWaterUpdate += UpdateBuffers;
+            isSetup = true;
         }
 
         public void SetupMaterial(){
@@ -87,7 +92,7 @@ namespace xshazwar.noize.geologic {
             buffer0.initializationMode = CustomRenderTextureUpdateMode.OnDemand;
             buffer0.updateMode = CustomRenderTextureUpdateMode.OnDemand;
             buffer0.initializationSource = CustomRenderTextureInitializationSource.TextureAndColor;
-            buffer0.initializationTexture = erosionCtl.waterControl;
+            buffer0.initializationTexture = geoProvider.GetWaterControlTexture();
             buffer0.depth = 0;
             // buffer0.material = updateMat;
             buffer0.Create();
@@ -97,21 +102,22 @@ namespace xshazwar.noize.geologic {
             buffer1.initializationMode = CustomRenderTextureUpdateMode.OnDemand;
             buffer1.updateMode = CustomRenderTextureUpdateMode.OnDemand;
             buffer1.initializationSource = CustomRenderTextureInitializationSource.TextureAndColor;
-            buffer1.initializationTexture = erosionCtl.textureControl;
+            buffer1.initializationTexture = geoProvider.GetTerrainControlTexture();
             buffer1.depth = 0;
             buffer1.Create();
             buffer1.Initialize();
         }
 
         public void UpdateBuffers(){
-            Graphics.CopyTexture(erosionCtl.waterControl , buffer0);
-            Graphics.CopyTexture(erosionCtl.textureControl , buffer1);
+            Graphics.CopyTexture(geoProvider.GetWaterControlTexture() , buffer0);
+            Graphics.CopyTexture(geoProvider.GetTerrainControlTexture() , buffer1);
         }
 
 
         void OnDisable()
          {
-            erosionCtl.OnCompleteCycle -= UpdateBuffers;
+            if (!isSetup) return;
+            geoProvider.OnWaterUpdate -= UpdateBuffers;
             buffer0.Release();
             DestroyImmediate(buffer0);
             buffer1.Release();
@@ -119,7 +125,7 @@ namespace xshazwar.noize.geologic {
         }
 
         void OnDestroy(){
-            erosionCtl.OnPostInit -= ErosionReady;
+            geoProvider.OnGeodataReady -= ErosionReady;
         }
 
 

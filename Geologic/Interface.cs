@@ -28,70 +28,10 @@ namespace xshazwar.noize.geologic {
             where  RW : struct, IRWTile;
     }
 
-    
-
     public interface IWriteFlowMap: ICommonTileSettings {
 
         void Execute<RO, WO>(int z, WO height, RO flowN, RO flowS, RO flowE, RO flowW) 
             where  RO : struct, IReadOnlyTile
             where  WO : struct, IWriteOnlyTile;
     }
-
-    // // Particle Erosion
-
-    // public interface IPoolSuperPosition {
-    //     void CreateSuperPositions(int z, NativeStream.Writer minimaStream);
-    //     void CollapseMinima(
-    //         int minimaIdx,
-    //         NativeParallelMultiHashMap<int, int>.ParallelWriter boundaryWriterBM,
-    //         NativeParallelMultiHashMap<int, int>.ParallelWriter boundaryWriterMB,
-    //         NativeParallelHashMap<int, int>.ParallelWriter catchmentWriter,
-    //         ProfilerMarker? profiler = null
-    //     );
-
-    //     void SolvePoolHeirarchy(
-    //         NativeParallelMultiHashMap<int, int> boundary_BM,
-    //         NativeParallelMultiHashMap<int, int> boundary_MB,
-    //         NativeParallelHashMap<int, int> catchmentMap,
-    //         UnsafeParallelHashMap<PoolKey, Pool> pools,
-    //         ProfilerMarker? profiler = null
-    //     );
-    //     void SetupCollapse(
-    //         int resolution,
-    //         NativeArray<Cardinal> flow_,
-    //         NativeSlice<float> heightMap_,
-    //         NativeSlice<float> outMap_);
-        
-    //     void SetupPoolGeneration(
-    //         int resolution,
-    //         NativeSlice<float> heightMap_,
-    //         NativeSlice<float> outMap_
-    //     );
-
-
-    // }
-
-    // public interface IParticle {
-
-    //     // void Reset(int2 maxPos, P prototype) ;
-
-    //     void SetPosition(int x, int y);
-    //     public int2 GetPosition();
-
-    //     // void Consume<P>(P part) where P : struct, IParticle;
-    //     // void Effect(WorldTile tile)
-    //     //     where RW: struct, IRWTile;
-    // }
-
-    // public interface IParticleManager {
-    //     void Execute<P>(NativeSlice<P> particles) where P : struct, IParticle;
-    // }
-
-    // public interface IParticleErode : ICommonTileSettings {
-
-    //     void Execute<P, RW>(int i, NativeSlice<P> particles, RW tile)
-    //         where P : struct, IParticle
-    //         where RW: struct, IRWTile;
-
-    // }
 }

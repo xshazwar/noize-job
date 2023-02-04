@@ -24,11 +24,11 @@ namespace xshazwar.noize.mesh {
 		public static JobHandle ScheduleParallel (
 			Mesh mesh,
 			Mesh.MeshData meshData,
-			int resolution,
-			int inputResolution,
-			int marginPix,
-			float tileHeight,
-			float tileSize,
+			int resolution, // tileResolution
+			int inputResolution, // generatorResolution
+			int marginPix,       // margin (verts?)
+			float tileHeight,    // WS height
+			float tileSize,      // WS width
 			NativeSlice<float> heights,
 			JobHandle dependency
 		) {

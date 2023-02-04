@@ -7,14 +7,11 @@ using UnityEngine;
 using UnityEngine.Profiling;
 
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 
 namespace xshazwar.noize.pipeline {
 
-    // public enum PipelineBufferOperation {
-    //     READ,
-    //     WRITE
-    // }
 /*
 // 
 //   Interface
@@ -37,6 +34,10 @@ namespace xshazwar.noize.pipeline {
         public T GetBuffer(string key);
     }
 
+    public interface IPointToBuffer {
+        public unsafe void* GetPtr(string name);
+    }
+
 /*
 // 
 //   Type -> StateManager Lookups
@@ -44,7 +45,19 @@ namespace xshazwar.noize.pipeline {
 */
 
     public static class ConstraintsLinear<T> where T : unmanaged, IEquatable<T> {
+        
+        public static readonly HashSet<Type> SINGLE_TYPES = new HashSet<Type> {
+            typeof(NativeReference<T>)
+        };
+        
+        public static readonly HashSet<Type> SERIALIZED_TYPES = new HashSet<Type> {
+            typeof(NativeReference<T>),
+            typeof(NativeArray<T>),
+            typeof(NativeList<T>)
+        };
+        
         public static readonly HashSet<Type> SUPPORTED_TYPES = new HashSet<Type> {
+            typeof(NativeReference<T>),
             typeof(NativeArray<T>),
             typeof(NativeList<T>),
             typeof(NativeQueue<T>),
@@ -52,6 +65,7 @@ namespace xshazwar.noize.pipeline {
         };
 
         public static readonly Dictionary<Type, Type> conversion = new Dictionary<Type, Type> {
+                {typeof(NativeReference<T>), typeof(NativeReferenceState<T>)},
                 {typeof(NativeArray<T>), typeof(NativeArrayState<T>)},
                 {typeof(NativeList<T>), typeof(NativeListState<T>)},
                 {typeof(NativeQueue<T>), typeof(NativeQueueState<T>)},
@@ -102,11 +116,12 @@ namespace xshazwar.noize.pipeline {
 // 
 */
 
+    // Key Value Types
+
     public class NativeParallelHashMapState<K, V>: DisposablePipelineState<NativeParallelHashMap<K, V>> where K : struct, IEquatable<K> where V: struct {
         public NativeParallelHashMapState(){}
 
         public override NativeParallelHashMap<K,V> CreateInstance(int size){
-            Debug.Log($"allocate new NativeParallelHashMap<{typeof(K)},{typeof(V)}>: {size}");
             return new NativeParallelHashMap<K,V>(size, Allocator.Persistent);
         }
     }
@@ -115,7 +130,6 @@ namespace xshazwar.noize.pipeline {
         public NativeParallelMultiHashMapState(){}
 
         public override NativeParallelMultiHashMap<K,V> CreateInstance(int size){
-            Debug.Log($"allocate new NativeParallelMultiHashMap<{typeof(K)},{typeof(V)}>: {size}>");
             return new NativeParallelMultiHashMap<K,V>(size, Allocator.Persistent);
         }
     }
@@ -126,32 +140,65 @@ namespace xshazwar.noize.pipeline {
         public NativeParallelHashSetState(){}
         
         public override NativeParallelHashSet<T> CreateInstance(int size){
-            Debug.Log($"allocate new NativeParallelHashSet<{typeof(T)}>: {size}");
             return new NativeParallelHashSet<T>(size, Allocator.Persistent);
         }
     }
 
-    public class NativeListState<T> : DisposablePipelineState<NativeList<T>> where T: unmanaged {
+    // Non KV Types
+
+    public class NativeListState<T> : PointyDisposablePipelineState<NativeList<T>> where T: unmanaged {
         
         public NativeListState(){}
+
+        public override unsafe void* GetPtr(string name){
+            NativeList<T> b = GetBuffer(name);
+            return b.GetUnsafeReadOnlyPtr();
+        }
         
         public override NativeList<T> CreateInstance(int size){
-            Debug.Log($"allocate new NativeList<{typeof(T)}>: {size}");
             return new NativeList<T>(size, Allocator.Persistent);
         }
     }
 
-    public class NativeArrayState<T> : DisposablePipelineState<NativeArray<T>> where T: unmanaged {
+    public class NativeReferenceState<T> : PointyDisposablePipelineState<NativeReference<T>> where T: unmanaged {
+        
+        public NativeReferenceState(){}
+
+        public override unsafe void* GetPtr(string name){
+            NativeReference<T> b = GetBuffer(name);
+            return b.GetUnsafeReadOnlyPtr();
+        }
+        
+        public override NativeReference<T> CreateInstance(int size){
+            return new NativeReference<T>(Allocator.Persistent);
+        }
+
+        public override NativeReference<T> GetBuffer(string key){
+            if (buffers == null){
+                buffers = new Dictionary<string, NativeReference<T>>();
+            }
+            if (!buffers.ContainsKey(key)){
+                Debug.Log($"Allocate NativeReference{typeof(T)} {key}");
+                buffers[key] = CreateInstance(1);
+            }
+            return buffers[key];
+        }
+    }
+
+    public class NativeArrayState<T> : PointyDisposablePipelineState<NativeArray<T>> where T: unmanaged {
         
         public NativeArrayState() : base(){}
+
+        public override unsafe void* GetPtr(string name){
+            NativeArray<T> b = GetBuffer(name);
+            return b.GetUnsafeReadOnlyPtr();
+        }
         
         public override NativeArray<T> CreateInstance(int size){
-            Debug.Log($"allocate new NativeArray<{typeof(T)}>: {size}");
             return new NativeArray<T>(size, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         }
 
         public override NativeArray<T> CreateInstance(int size, NativeArrayOptions options = NativeArrayOptions.UninitializedMemory){
-            Debug.Log($"allocate new NativeArray<{typeof(T)}>: {size}");
             return new NativeArray<T>(size, Allocator.Persistent, options);
         }
 
@@ -165,7 +212,6 @@ namespace xshazwar.noize.pipeline {
         public NativeQueueState() : base(){}
         
         public override NativeQueue<T> CreateInstance(int size){
-            Debug.Log($"allocate new NativeQueue<{typeof(T)}>: {size} -> not used");
             return new NativeQueue<T>(Allocator.Persistent);
         }
 
@@ -180,6 +226,12 @@ namespace xshazwar.noize.pipeline {
 // 
 */
 
+    public abstract class PointyDisposablePipelineState<C> : DisposablePipelineState<C>, IPointToBuffer where C : IDisposable {
+        public PointyDisposablePipelineState(){}
+
+        public abstract unsafe void* GetPtr(string name);
+    }
+    
     public abstract class DisposablePipelineState<C> : BasePipelineState<C>, IManageBuffer<C> where C : IDisposable {
         public DisposablePipelineState(){}
 
@@ -192,35 +244,35 @@ namespace xshazwar.noize.pipeline {
     public abstract class BasePipelineState<C>: IManageBuffer<C> { 
 
         // bufferName -> {guid-of-work}.{buffer-alias}
-        private Dictionary<string, Action> notifier;
-        private Dictionary<string, C> buffers;
-        private Dictionary<string, HandleLock> locks;
+        protected Dictionary<string, Action> notifier;
+        protected Dictionary<string, C> buffers;
+        protected Dictionary<string, HandleLock> locks;
 
         public BasePipelineState(){}
 
-        public C GetBuffer(string key, int size, NativeArrayOptions options = NativeArrayOptions.UninitializedMemory){
+        public virtual C GetBuffer(string key, int size, NativeArrayOptions options = NativeArrayOptions.UninitializedMemory){
             if (buffers == null){
                 buffers = new Dictionary<string, C>();
             }
             if (!buffers.ContainsKey(key)){
-                Debug.Log($"<{typeof(C)}>: {key} is not allocated, creating instance");
+                Debug.Log($"Allocate {typeof(C)} {key} >> {size}");
                 buffers[key] = CreateInstance(size, options);
             }
             return buffers[key];
         }
         
-        public C GetBuffer(string key, int size){
+        public virtual C GetBuffer(string key, int size){
             if (buffers == null){
                 buffers = new Dictionary<string, C>();
             }
             if (!buffers.ContainsKey(key)){
-                Debug.Log($"<{typeof(C)}>: {key} is not allocated, creating instance");
+                Debug.Log($"Allocate {typeof(C)} {key} >> {size}");
                 buffers[key] = CreateInstance(size);
             }
             return buffers[key];
         }
 
-        public C GetBuffer(string key){
+        public virtual C GetBuffer(string key){
             if (buffers == null){
                 buffers = new Dictionary<string, C>();
             }
@@ -286,7 +338,6 @@ namespace xshazwar.noize.pipeline {
 
         public void Destroy(){
             foreach(var key in buffers.Keys.ToArray()){
-                Debug.Log($"Disposing of remaining buffer {key}");
                 ReleaseBuffer(key);
             }
         }

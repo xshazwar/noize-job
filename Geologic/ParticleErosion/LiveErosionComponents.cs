@@ -14,21 +14,22 @@ using UnityEngine;
 
 using static Unity.Mathematics.math;
 
-using xshazwar.noize.pipeline;
 using xshazwar.noize.filter;
+using xshazwar.noize.pipeline;
+using xshazwar.noize.tile;
 
 namespace xshazwar.noize.geologic {
     using Unity.Mathematics;
 
     public struct FlowMaster {
         public WorldTile tile;
+        public ErosionParameters ep;
         
         [NativeDisableContainerSafetyRestriction]
         [ReadOnly]
         // public NativeQueue<ErosiveEvent> events;
         public NativeParallelMultiHashMap<int, ErosiveEvent> events;
 
-        
         // [NativeDisableContainerSafetyRestriction]
         // public NativeQueue<ErosiveEvent>.ParallelWriter eventWriter;
         
@@ -48,7 +49,7 @@ namespace xshazwar.noize.geologic {
         public static readonly float[] KERNEL5 = new float[] { 0.12007838424321349f, 0.23388075658535032f, 0.29208171834287244f, 0.23388075658535032f, 0.12007838424321349f };
 
         public int2 MaxPos {
-            get { return tile.ep.TILE_RES;}
+            get { return tile.tm.GENERATOR_RES;}
             private set {}
         }
 
@@ -57,28 +58,35 @@ namespace xshazwar.noize.geologic {
         }
 
         public void CreateRandomParticles(
+            int threadId,
+            int generationID, // repeats 0 - 3
+            int generationSize,
             int count,
             int seed,
-            ErosionParameters ep,
             ref NativeQueue<BeyerParticle>.ParallelWriter particleWriter
         ){
             random = new Unity.Mathematics.Random((uint) seed);
+            ushort pid = Convert.ToUInt16(generationID * generationSize);
             for (int i = 0; i < count; i++){
+                pid += Convert.ToUInt16((threadId * count) + i);
                 particleWriter.Enqueue(
-                    new BeyerParticle(RandomPos(), ep, false)
+                    new BeyerParticle(pid, RandomPos(), ep, tile.tm, false)
                 );
             }
         }
 
         public void BeyerSimultaneousDescentSingle(
-            ref BeyerParticle p
+            ref BeyerParticle p,
+            ref NeighborhoodHelper nbh
         ){
             ErosiveEvent evt;
+            int i = 0;
             while(!p.isDead){
-                p.DescendSimultaneous(ref tile, out evt);
-                // eventWriter.Enqueue(evt);
+                p.DescendSimultaneous(ref tile, ref nbh, out evt);
                 eventWriter.Add(evt.idx, evt);
+                i += 1;
             }
+            // Debug.Log($"{p.pid} descended {i} ");
         }
 
         public void CombineBeyerEvents(ErosiveEvent evt, ref float poolV, ref float trackV, ref float sedimentV){
@@ -89,10 +97,10 @@ namespace xshazwar.noize.geologic {
 
         public void HandleBeyerEvent(int idx, float poolV, float trackV, float sedimentV, ref NativeQueue<ErosiveEvent>.ParallelWriter erosionWriter){
             if(abs(poolV) > 0f){
-                Place(idx, poolV, (tile.ep.POOL_PLACEMENT_MULTIPLIER), ref tile.pool);
+                Place(idx, poolV, (ep.POOL_PLACEMENT_MULTIPLIER), ref tile.pool);
             }
             if(abs(trackV) > 0f){
-                Place(idx, trackV, tile.ep.TRACK_PLACEMENT_MULTIPLIER, ref tile.track);
+                Place(idx, trackV, ep.TRACK_PLACEMENT_MULTIPLIER, ref tile.track);
             }
             erosionWriter.Enqueue(new ErosiveEvent {
                 idx = idx,
@@ -102,9 +110,9 @@ namespace xshazwar.noize.geologic {
 
         public void WriteSedimentMap(ref NativeQueue<ErosiveEvent> sedimentEvents, int kernelSize, ref NativeArray<float> kernel){
             PileSolver solver = new PileSolver {tile = tile};
-            float PILE_THRESHOLD = tile.ep.PILE_THRESHOLD / tile.ep.HEIGHT;
-            float MIN_PILE_INCREMENT = tile.ep.MIN_PILE_INCREMENT / tile.ep.HEIGHT;
-            solver.Init(tile.ep.PILING_RADIUS);
+            float PILE_THRESHOLD = ep.PILE_THRESHOLD / tile.tm.HEIGHT;
+            float MIN_PILE_INCREMENT = ep.MIN_PILE_INCREMENT / tile.tm.HEIGHT;
+            solver.Init(ep.PILING_RADIUS);
             ErosiveEvent evt;
             while(sedimentEvents.TryDequeue(out evt)){
                 if(evt.deltaSediment < 0f){

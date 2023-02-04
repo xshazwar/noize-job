@@ -12,18 +12,28 @@ using Unity.Jobs;
 using static Unity.Mathematics.math;
 using Unity.Mathematics;
 
-using xshazwar.noize.pipeline;
 using xshazwar.noize;
-using xshazwar.noize.scripts;
-using xshazwar.noize.mesh;
 using xshazwar.noize.geologic;
+using xshazwar.noize.mesh;
+using xshazwar.noize.pipeline;
+using xshazwar.noize.scripts;
+using xshazwar.noize.tile;
 
 namespace xshazwar.noize.scripts {
 
-    public class TileRequest{
-        public string uuid;
-        public Vector2Int pos;
-    }
+    // TODO move to Tile Namespace
+
+    // public class TileRequest{
+    //     public string uuid;
+    //     public Vector2Int pos;
+    // }
+
+    // public struct TileSetMeta {
+    //     public int generatorResolution;
+    //     public int tileResolution;
+    //     public int margin;
+    //     public float patchRes;
+    // }
 
     [AddComponentMenu("Noize/MeshTileGenerator", 0)]
     public class MeshTileGenerator : MonoBehaviour {
@@ -32,6 +42,10 @@ namespace xshazwar.noize.scripts {
         public BasePipeline meshPipeline;
         public MeshBakery bakery;
 
+        public string activeSaveName;
+        public string activeSaveVersion;
+
+        public TileSetMeta tileMeta;
         public ErosionSettings erosionSettings;
 
         public int GenTileOffsetX = 0;
@@ -70,12 +84,30 @@ namespace xshazwar.noize.scripts {
         void Awake()
         {
             pipelineManager = FindObjectsOfType<PipelineStateManager>()[0];
+            pipelineManager.SetSavePath(activeSaveName, activeSaveVersion);
+            // Init PM w/ proper context
             isRunning = false;
-            upstreamMesh += MeshComplete;
+            // upstreamMesh += MeshComplete;
             activeTiles = new Dictionary<string, TileRequest>();
             workQueue = new ConcurrentQueue<TileRequest>();
             children = new Dictionary<string, GameObject>();
             backingData =  pipelineManager.GetBuffer<float, NativeArray<float>>("__MeshGenerator", generatorResolution*generatorResolution);
+            NativeReference<TileSetMeta> tileMetaRef = pipelineManager.GetBuffer<TileSetMeta, NativeReference<TileSetMeta>>("__G_TileSetMeta");
+            // Set from locals
+            float patchRes = (tileResolution * 1f) / (tileSize * 1f);
+            tileMetaRef.Value = new TileSetMeta {
+                TILE_RES = new int2(tileResolution, tileResolution),
+                TILE_SIZE = new int2(tileSize, tileSize),
+                GENERATOR_RES = new int2(generatorResolution, generatorResolution),
+                PATCH_RES = new float2(patchRes, patchRes),
+                HEIGHT = tileHeight,
+                HEIGHT_F = tileHeight * 1f,
+                MARGIN = margin
+            };
+            tileMeta = tileMetaRef.Value;
+            // Save back to disk
+            pipelineManager.SaveBufferToDisk<TileSetMeta, NativeReference<TileSetMeta>>("__G_TileSetMeta");
+
             if(bakeMeshes){
                 bakery = GetComponent<MeshBakery>();
             }
@@ -133,8 +165,6 @@ namespace xshazwar.noize.scripts {
         }
         protected virtual int calcTotalResolution(){
             double patchRes = (tileResolution * 1.0) / tileSize;
-            // return tileResolution + (2 * (int) Mathf.Ceil((float) (margin * patchRes)));
-            // TODO Figure out if we actually wanted the mesh resolution to be two more? ^^
             return tileResolution + (2 * (int) (float) (margin * patchRes));
         }
 
@@ -177,11 +207,11 @@ namespace xshazwar.noize.scripts {
             // Create new Mesh Target at proper position
             CreateChildMesh(req.pos, ref mData);
             // Enqueue Work
-            meshPipeline.Enqueue(mData, completeAction: MeshComplete);
+            // meshPipeline.Enqueue(mData, completeAction: MeshComplete);
         }
 
         protected virtual void CreateChildMesh(Vector2Int pos, ref MeshStageData data){
-            data.mesh = new Mesh();
+            // data.mesh = new Mesh();
             GameObject go = new GameObject(pos.ToString());
             go.transform.parent = this.gameObject.transform;
             go.transform.position = new Vector3(
@@ -189,17 +219,17 @@ namespace xshazwar.noize.scripts {
                 0f,
                 (float) ((pos.y * tileSize) - calculateMarginWS()));
             //Add Components
-            MeshFilter filter = go.AddComponent<MeshFilter>();
-            MeshRenderer renderer = go.AddComponent<MeshRenderer>();
+            // MeshFilter filter = go.AddComponent<MeshFilter>();
+            // MeshRenderer renderer = go.AddComponent<MeshRenderer>();
             LiveErosion erosion = go.AddComponent<LiveErosion>();
-            Rigidbody rb = go.AddComponent<Rigidbody>();
-            StreamDrawer sd = go.AddComponent<StreamDrawer>();
-            rb.isKinematic = true;
+            // Rigidbody rb = go.AddComponent<Rigidbody>();
+            // StreamDrawer sd = go.AddComponent<StreamDrawer>();
+            // rb.isKinematic = true;
             erosion.SetFromTileGenerator(
-                activeTiles[data.uuid], this, data.mesh
+                activeTiles[data.uuid], this //, data.mesh
             );
             string key = pos.ToString();
-            sd.referenceMat = meshMaterial;
+            // sd.referenceMat = meshMaterial;
             children[key] = go;
             // if(meshMaterial != null){
             //     Material clone = new Material(meshMaterial);
@@ -207,34 +237,36 @@ namespace xshazwar.noize.scripts {
             //     renderer.material = clone;
             //     // renderer.material = meshMaterial;
             // }
-            filter.mesh = data.mesh;
+            // filter.mesh = data.mesh;
+            activeTiles.Remove(data.uuid);
+            isRunning = false;
         }
 
-        public void MeshComplete(StageIO res){
-            MeshStageData d = (MeshStageData) res;
-            // should be prebaked in a stage in the mesh pipeline.
-            if (!bakeMeshes || bakery == null){
-                activeTiles.Remove(d.uuid);
-                isRunning = false;
-                return;
-            }
-            bakery.Enqueue(new MeshBakeOrder{
-                uuid = d.uuid,
-                meshID = d.mesh.GetInstanceID(),
-                onCompleteBake = (string uuid) => MeshBaked(uuid)
-            });
-            isRunning = false;
-            OnMeshComplete(d);   
-        }
+        // public void MeshComplete(StageIO res){
+        //     MeshStageData d = (MeshStageData) res;
+        //     // should be prebaked in a stage in the mesh pipeline.
+        //     if (!bakeMeshes || bakery == null){
+        //         activeTiles.Remove(d.uuid);
+        //         isRunning = false;
+        //         return;
+        //     }
+        //     bakery.Enqueue(new MeshBakeOrder{
+        //         uuid = d.uuid,
+        //         meshID = d.mesh.GetInstanceID(),
+        //         onCompleteBake = (string uuid) => MeshBaked(uuid)
+        //     });
+        //     isRunning = false;
+        //     OnMeshComplete(d);   
+        // }
 
         protected virtual void OnMeshComplete(MeshStageData d){}
     
-        public void MeshBaked(string uuid){
-            TileRequest req = activeTiles[uuid];
-            string key = req.pos.ToString();
-            children[key].AddComponent<MeshCollider>();
-            OnMeshBaked(uuid);
-        }
+        // public void MeshBaked(string uuid){
+        //     TileRequest req = activeTiles[uuid];
+        //     string key = req.pos.ToString();
+        //     children[key].AddComponent<MeshCollider>();
+        //     OnMeshBaked(uuid);
+        // }
 
         protected virtual void OnMeshBaked(string uuid){}
 

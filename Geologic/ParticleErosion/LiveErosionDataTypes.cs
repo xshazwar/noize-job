@@ -18,6 +18,7 @@ using UnityEngine.Assertions;
 
 using static Unity.Mathematics.math;
 
+using xshazwar.noize.tile;
 using xshazwar.noize.pipeline;
 using xshazwar.noize.filter;
 
@@ -34,7 +35,9 @@ namespace xshazwar.noize.geologic {
     // Erosive Events
     public struct ErosiveEvent : IEquatable<ErosiveEvent> {
         public int idx; // the tile space idx affected
-        public Heading dir; // the current direction of movement
+        public ushort actor;
+        public ushort age;
+        // public Heading dir; // the current direction of movement
         public float deltaWaterTrack;
         public float deltaPoolMap;
         public float deltaSediment;
@@ -42,7 +45,9 @@ namespace xshazwar.noize.geologic {
         public static implicit operator ErosiveEvent(int idx){
             return new ErosiveEvent() {
                 idx = idx,
-                dir = Heading.NONE,
+                actor = 0,
+                age = 0,
+                // dir = Heading.NONE,
                 deltaWaterTrack = 0,
                 deltaPoolMap = 0,
                 deltaSediment = 0
@@ -51,14 +56,24 @@ namespace xshazwar.noize.geologic {
 
         public bool Equals(ErosiveEvent other){
             // TODO use lazy comparer for the floats
-            if (idx != other.idx){
-                return false;
-            }
+            if(idx != other.idx) return false;
+            if(actor != actor) return false;
+            if(age != age) return false;
             return (deltaWaterTrack == other.deltaWaterTrack && deltaPoolMap == other.deltaPoolMap && deltaSediment == other.deltaSediment);
         }
     }
 
-    public struct ErosionParameters {
+    public class SortErosiveEventsAgeHelper : IComparer<ErosiveEvent>{
+        public int Compare(ErosiveEvent a, ErosiveEvent b){
+            if(a.actor == b.actor){
+                if (a.age == b.age) return 0;
+                return a.age > b.age ? 1 : -1;
+            }
+            return a.actor > b.actor ? 1 : -1;
+        }
+    }
+
+    public struct ErosionParameters{
         public float INERTIA;
         public float GRAVITY;
         public float DRAG;
@@ -66,6 +81,7 @@ namespace xshazwar.noize.geologic {
         public float EVAP;
         public float EROSION;
         public float DEPOSITION;
+        public float FLOW_HEIGHT_CONTRIBUTION;
 
         public float SLOW_CULL_ANGLE;
         public float SLOW_CULL_SPEED;
@@ -81,45 +97,113 @@ namespace xshazwar.noize.geologic {
         public int PILING_RADIUS;
         public float MIN_PILE_INCREMENT;
         public float PILE_THRESHOLD;
-        
-        public float HEIGHT;
-        public float2 PATCH_RES;
-        public int2 TILE_RES;
 
-        public ErosionParameters(int resX, int resZ, float height, float width){
-            INERTIA = 0.7f;
-            GRAVITY = 1f;
-            DRAG = .001f;
-            FRICTION = .001f;
-            EVAP = .001f;
-            EROSION = 0.2f;
+        public static ErosionParameters Default(){
+            return new ErosionParameters() {
+                INERTIA = 0.7f,
+                GRAVITY = 1f,
+                DRAG = .001f,
+                FRICTION = .001f,
+                EVAP = .001f,
+                EROSION = 0.2f,
+                FLOW_HEIGHT_CONTRIBUTION = 25f,
 
-            DEPOSITION = 0.05f;
-            SLOW_CULL_ANGLE = 3f;
-            SLOW_CULL_SPEED = .1f;
-            CAPACITY = 3f;
-            MAXAGE = 64;
-            TERMINAL_VELOCITY = 1 / DRAG; // vel = DRAG * pow(vel, 2)
+                DEPOSITION = 0.05f,
+                SLOW_CULL_ANGLE = 3f,
+                SLOW_CULL_SPEED = .1f,
+                CAPACITY = 3f,
+                MAXAGE = 64,
+                TERMINAL_VELOCITY = 1f / .001f, // vel = DRAG * pow(vel, 2)
 
-            SURFACE_EVAPORATION_RATE = 0.1f;
-            POOL_PLACEMENT_MULTIPLIER = 0.5f;
-            TRACK_PLACEMENT_MULTIPLIER = 80f;
-            FLOW_LOSS_RATE = 0.05f;
+                SURFACE_EVAPORATION_RATE = 0.1f,
+                POOL_PLACEMENT_MULTIPLIER = 0.5f,
+                TRACK_PLACEMENT_MULTIPLIER = 80f,
+                FLOW_LOSS_RATE = 0.05f,
 
-            PILING_RADIUS = 15;
-            MIN_PILE_INCREMENT = 1f;
-            PILE_THRESHOLD = 2f;
-
-            HEIGHT = height;                                     // Total Height in M
-            PATCH_RES = new float2(width / resX, width/ resZ); // grid space in M
-            TILE_RES = new int2(resX, resZ);                     // grid spaces
-
+                PILING_RADIUS = 15,
+                MIN_PILE_INCREMENT = 1f,
+                PILE_THRESHOLD = 2f
+            };
         }
     }
 
+    public struct NeighborhoodHelper {
+        // These are ints because floats weren't properly matching themselves 
+        // when calling .IndexOf, returning -1
+        [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
+        public NativeArray<int> nb;
+        [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
+        public NativeArray<int> nbSort;
+        [NativeDisableContainerSafetyRestriction]
+        [NoAlias]
+        public NativeArray<int2> nbDir;
+
+        public static NativeArray<int2> generateLookupDir(){
+            NativeArray<int2> d = new NativeArray<int2>(8, Allocator.Temp);
+            d[0] = WorldTile.up;
+            d[1] = WorldTile.right;
+            d[2] = WorldTile.down;
+            d[3] = WorldTile.left;
+            d[4] = WorldTile.ne;
+            d[5] = WorldTile.se;
+            d[6] = WorldTile.sw;
+            d[7] = WorldTile.nw;
+            return d;
+        }
+
+        public void CollectNeighbors(int x, int z, ref WorldTile tile, float maxFlowHeight = 0.25f){
+            // tile.CollectNeighbors(x, z, ref nb);
+            tile.CollectNeighborsAllHeights(x, z, ref nb, maxFlowHeight);
+            nb.CopyTo(nbSort);
+            nbSort.Sort<int>();
+        }
+
+        public int2 NaturalHeading(out float height){
+            int h = nbSort[0];
+            int idx = nb.IndexOf<int, int>(h);
+            height = (float) h / 100f;
+            return nbDir[idx];
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float HeadingHeight(Heading dir){
+            int idx = dir.ToWorldTileIdx();
+            return ((float) nb[idx]) / 100f;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float HeadingHeight(int2 dir){
+            Heading h = HeadingExt.FromInt2(dir);
+            return HeadingHeight(h);
+        }
+
+        public void ChooseHeading(Heading center, out int2 newDir, out float height){
+            Heading left;
+            Heading right;
+            center.AdjacentHeadings(out left, out right);
+            float3 h = new float3(
+                HeadingHeight(left),
+                HeadingHeight(center),
+                HeadingHeight(right)
+            );
+            if(h.x < h.y && h.x < h.z){
+                height = h.x;
+                newDir = left.ToInt2();
+            }else if( h.z < h.x && h.z < h.y){
+                height = h.z;
+                newDir = right.ToInt2();
+            }else{
+                height = h.y;
+                newDir = center.ToInt2();
+            }
+        }
+
+    }
+
     public struct BeyerParticle : IEquatable<BeyerParticle> {
-        
-        public int pid;
+        public ushort pid;
         public float2 pos;
         public float2 dir; // norm
         public Heading heading;
@@ -127,9 +211,10 @@ namespace xshazwar.noize.geologic {
         public float water;
         public float sediment;
         public bool isDead;
-        public int age;
-        
+        public ushort age;
+
         public ErosionParameters ep;
+        public TileSetMeta tm;
 
         static readonly float2 left = new float2(-1, 0);
         static readonly float2 right = new float2(1, 0);
@@ -138,8 +223,8 @@ namespace xshazwar.noize.geologic {
         private static readonly float2 ZERO2 = new float2(0);
         private static readonly bool2 TRUE2 = new bool2(true);
 
-        public BeyerParticle(int2 pos, ErosionParameters ep, bool dead){
-            this.pid = (100_000 * (int)pos.x) + (int) pos.y;
+        public BeyerParticle(ushort pid, int2 pos, ErosionParameters ep, TileSetMeta tm, bool dead){
+            this.pid = pid;
             this.pos = new float2(pos);
             this.dir = new float2(0f, 0f);
             this.heading = Heading.NONE;
@@ -149,14 +234,16 @@ namespace xshazwar.noize.geologic {
             this.isDead = dead;
             this.age = 0;
             this.ep = ep;
+            this.tm = tm;
         }
 
-        public BeyerParticle(int2 pos, ErosionParameters ep, float water): this(pos, ep, false){
+        public BeyerParticle(ushort pid, int2 pos, ErosionParameters ep, TileSetMeta tm, float water): this(pid, pos, ep, tm, false){
             this.water = water;
         }
 
         public bool Equals(BeyerParticle other){
             // TODO use lazy comparer for the floats
+            if (pid != other.pid) return false;
             if (!(pos == other.pos).Equals(TRUE2)){
                 return false;
             }
@@ -166,86 +253,155 @@ namespace xshazwar.noize.geologic {
             return (water == other.water && sediment == other.sediment);
         }
 
-        public void Reset(int2 pos){
-            this.pos = new float2(pos);
-            this.pid = (100_000 * (int)pos.x) + (int) pos.y;
-            this.dir = new float2(0f, 0f);
-            this.vel = .01f;
-            this.water = 1f;
-            this.sediment = 0f;
-            this.isDead = false;
-            this.age = 0;
-            this.ep = ep;
+        public float UphillVelocityLoss(float vDiff, float effectiveFriction, out float loss){
+            float theta = atan(vDiff / tm.PATCH_RES.x);
+            float thetaD = theta * 180f / 3.14159f;
+            float accelerationSign = 1f;
+            float acceleration = (ep.GRAVITY * sin(theta)) + effectiveFriction;
+            loss = sqrt(2 * abs(acceleration) * (vDiff / sin(theta)));
+            return loss;
         }
 
-        public float2 nextPos(ref WorldTile tile) {
-            float3 norm = tile.Normal(pos);
-            float2 g = new float2(-norm.x, -norm.z);
-            float3 _norm = normalize(norm);
-            float2 gnorm = round(4f * normalize(g)) / 4f;
-            // dir = normalize((dir * (ep.INERTIA * (1 - _norm.y))) + (gnorm * ( 1f - (ep.INERTIA * (1 - _norm.y)))));
-            dir = normalize((dir * (ep.INERTIA * (vel / ep.TERMINAL_VELOCITY) * (1 - _norm.y))) + (gnorm * ( 1f - (ep.INERTIA * (vel / ep.TERMINAL_VELOCITY) * (1 - _norm.y)))));
-            // make rounder
-            dir = round(10f * dir) / 10f;
-            return pos + dir;
+        public float DownhillVelocityGain(float vDiff, float effectiveFriction){
+            float theta = atan(vDiff / tm.PATCH_RES.x);
+            float thetaD = theta * 180f / 3.14159f;
+            float accelerationSign = 1f;
+            float acceleration = (ep.GRAVITY * sin(theta)) - effectiveFriction;
+            return sqrt(2 * abs(acceleration) * (vDiff / sin(theta)));
         }
 
-        public bool DescendSimultaneous(ref WorldTile tile, out ErosiveEvent evt){
+        public bool DescendSimultaneous(ref WorldTile tile, ref NeighborhoodHelper nbh, out ErosiveEvent evt){
+            #if NJ_DBG_PARTFLOW
+                Debug.Log($"{pid} ~~~~~~~~~~~ RND :{age}");
+            #endif
+            int2 intPos = tile.getPos(pos);
             int idx = tile.getIdx(pos);
             evt = idx;
-            evt.dir = HeadingExt.FromFloat2(dir);
-            if(water < 1E-8f){
-                // Debug.Log($"dead from dehydration {water}: {age}");
+            evt.age = age;
+            evt.actor = pid;
+            Heading heading = HeadingExt.FromFloat2(dir);
+            // evt.dir = heading;
+            if(water < .01f){
+                #if NJ_DBG_PARTFLOW
+                    Debug.Log($"{pid} dead from dehydration {water}: {age}");
+                #endif
                 isDead = true;
-                evt.deltaSediment = sediment / ep.HEIGHT;
+                evt.deltaSediment = sediment / tm.HEIGHT;
                 return false;
             }
             if(age >= ep.MAXAGE){
-                // Debug.Log($"{pid} dead from old age {age}");
+                #if NJ_DBG_PARTFLOW
+                    Debug.Log($"{pid} dead from old age {age}");
+                #endif
                 isDead = true;
-                evt.deltaPoolMap = water / ep.HEIGHT;
-                evt.deltaSediment = sediment / ep.HEIGHT;
+                evt.deltaPoolMap = water / tm.HEIGHT;
+                evt.deltaSediment = sediment / tm.HEIGHT;
                 return false;
             }
-            float2 posN = nextPos(ref tile);    
-            evt.dir = HeadingExt.FromFloat2(dir);
-
+            
+            float currentHeight = tile.WIH(pos);
+            #if NJ_DBG_PARTFLOW
+                Debug.Log($"{pid} CH : {currentHeight}");
+            #endif
+            
+            nbh.CollectNeighbors(intPos.x, intPos.y, ref tile, ep.FLOW_HEIGHT_CONTRIBUTION);
+            float drainHeight;
+            int2 drainDir = nbh.NaturalHeading(out drainHeight);
+            
+            bool isNone = (heading == Heading.NONE);
+            if(heading == Heading.NONE){
+                heading = HeadingExt.FromInt2(drainDir);
+            }
+            float effectiveDrag = ep.DRAG * (1f - max(tile.flow[idx], 0f));
+            float effectiveFriction =  ep.FRICTION * (1f - max(tile.flow[idx], 0f));
+            
+            float headingHeight;
+            int2 flowDir;
+            nbh.ChooseHeading(heading, out flowDir, out headingHeight);
+            float hDiff = headingHeight - currentHeight;
+            float velocityLoss = 0f;
+            // apply drag
+            vel = vel - (vel * effectiveDrag);
+            if(hDiff < 0f){
+                // All good >> downhill
+                drainDir = flowDir;                
+            }else if(UphillVelocityLoss(hDiff, effectiveFriction, out velocityLoss) <= vel){
+                // Also all good, can overcome the gravity
+                drainDir = flowDir;
+            }else{
+                velocityLoss = 0f;
+                hDiff = drainHeight - currentHeight;
+                if(hDiff > 0f){
+                    #if NJ_DBG_PARTFLOW
+                        Debug.Log($"{pid} dead no drain {age}");
+                    #endif
+                    isDead = true;
+                    evt.deltaPoolMap = water / tm.HEIGHT;
+                    evt.deltaSediment = sediment / tm.HEIGHT;
+                    return false;
+                }
+            }
+            
+            heading = HeadingExt.FromInt2(drainDir);
+            dir = new float2(drainDir.x, drainDir.y);
+            float2 posN = pos + dir;
+            #if NJ_DBG_PARTFLOW
+                Debug.Log($"HERE: {pos.x}, {pos.y} next {posN.x}, {posN.y} change {drainDir.x}, {drainDir.y} a:{age}");
+            #endif
             if (tile.OutOfBounds(posN)) {
-                // Debug.Log($"dead from oob {age}");
+                #if NJ_DBG_PARTFLOW
+                    Debug.Log($"{pid} dead from oob {age} {posN.x}, {posN.y}, {tile.tm.GENERATOR_RES.x}");
+                #endif
                 isDead = true;
                 return false;
-            } // went OOB
-            float currentHeight = tile.WIH(pos);
-            float hDiff = tile.WIH(posN) - tile.WIH(pos); // in world Meters
+            }
             float vDiff = abs(hDiff);
             float acceleration = 0f;
             float depositionAmount = 0f;
             float currentCapacity = 0f;
             float thetaD = 0f;
             float deltaV = 0f;
-            float effectiveDrag = ep.DRAG * (1f - min(tile.flow[idx], 1f));
-            float effectiveFriction =  ep.FRICTION * (1f - min(tile.flow[idx], 1f));
-
+            
             if(vDiff > 0f){
-                float theta = atan(vDiff / ep.PATCH_RES.x);
+                float theta = atan(vDiff / tm.PATCH_RES.x);
                 thetaD = theta * 180f / 3.14159f;
                 float accelerationSign = 1f;
                 if(hDiff > 0f){
                     // uphill
-                    acceleration = (ep.GRAVITY * sin(theta)) + effectiveFriction;
-                    accelerationSign = -1f;
-
+                    #if NJ_DBG_PARTFLOW
+                        Debug.Log($"{pid} uphill >> {hDiff}");
+                    #endif
+                    deltaV = -1f * velocityLoss;
                 }else{
-                    acceleration = ep.GRAVITY * sin(theta) - effectiveFriction;
+                    #if NJ_DBG_PARTFLOW
+                        Debug.Log($"{pid} downhill  >> {hDiff}");
+                    #endif
+                    deltaV = DownhillVelocityGain(vDiff, effectiveFriction);
                 }
-                deltaV = accelerationSign * sqrt(2 * abs(acceleration) * (vDiff / sin(theta)));
+                #if NJ_DBG_PARTFLOW
+                    Debug.Log($"{pid} V: (({vel})) dV: {deltaV}");
+                #endif
             }
+            // add acceleration
             vel = max((vel + deltaV), 0f);
-            vel = max(vel - (effectiveDrag * vel * vel), 0f);
+            // factor in terminal velocity
+            vel = vel - max(
+                min(
+                    vel - ep.TERMINAL_VELOCITY,
+                    max(
+                        effectiveDrag * 0.25f * (vel - ep.TERMINAL_VELOCITY) * (vel - ep.TERMINAL_VELOCITY),
+                        0f)
+                    ),
+                0f);
+            #if NJ_DBG_PARTFLOW
+                Debug.Log($"{pid} new v : {vel}");
+            #endif
             if( thetaD < 3f && vel < 1f){
-                // Debug.Log($"{pid} dead from slow speed {age}");
-                evt.deltaPoolMap += water / ep.HEIGHT;
-                evt.deltaSediment += sediment / ep.HEIGHT;
+                #if NJ_DBG_PARTFLOW
+                    Debug.Log($"{pid} dead from slow speed {age}");
+                #endif
+                evt.deltaPoolMap += water / tm.HEIGHT;
+                evt.deltaSediment += sediment / tm.HEIGHT;
                 isDead = true;
                 return false;
             }
@@ -258,10 +414,16 @@ namespace xshazwar.noize.geologic {
                 // deposit
                 depositionAmount = ep.DEPOSITION * (sediment - currentCapacity);
             }
+            #if NJ_DBG_PARTFLOW
+                Debug.Log($"{pid}:: (Sed) {sediment} / (Cap){currentCapacity} >> {depositionAmount}");
+            #endif
             if(abs(depositionAmount) > 0f){
-                evt.deltaSediment += depositionAmount / ep.HEIGHT;
+                evt.deltaSediment += depositionAmount / tm.HEIGHT;
                 sediment -= depositionAmount;
             }
+            #if NJ_DBG_PARTFLOW
+                Debug.Log($"{pid} deposition {evt.deltaSediment}");
+            #endif
             evt.deltaWaterTrack = water;
             water = water * (1 - ep.EVAP);
             pos = posN;
@@ -273,7 +435,7 @@ namespace xshazwar.noize.geologic {
 
     public struct WorldTile {
 
-        public ErosionParameters ep;
+        public TileSetMeta tm;
         // TODO move these params to ErosionParameters
         static public readonly float MINFLOWPOOL = .00005f;
         /*
@@ -321,7 +483,7 @@ namespace xshazwar.noize.geologic {
         // Random
 
         public int2 RandomPos(){
-            return random.NextInt2(ZERO2, ep.TILE_RES);
+            return random.NextInt2(ZERO2, tm.GENERATOR_RES);
         }
 
         public void SetRandomSeed(int seed){
@@ -331,15 +493,15 @@ namespace xshazwar.noize.geologic {
         // Normal
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public float3 Normal(float2 p){
+        public float3 Normal(float2 p, out float4 neighbor){
             int2 pos = new int2(p);
-            return Normal(pos);
+            return Normal(pos, out neighbor);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public float3 Normal(int2 pos){
+        public float3 Normal(int2 pos, out float4 neighbor){
             float h = WIH(pos);
-            float4 neighbor;
+            // float4 neighbor;
             if(UnsafeNeighborhood(pos)){
                 neighbor = new float4(
                     WIH(pos + up),
@@ -355,33 +517,10 @@ namespace xshazwar.noize.geologic {
                     WIH_Unsafe(pos + left)
                 );
             }
-            float3 a = cross(new float3(0, h - neighbor.x, ep.PATCH_RES.y), new float3(ep.PATCH_RES.x, h - neighbor.y, 0));
-            float3 b = cross(new float3(0, h - neighbor.z, -ep.PATCH_RES.y), new float3(-ep.PATCH_RES.x, h - neighbor.w, 0));
+            float3 a = cross(new float3(0, h - neighbor.x, tm.PATCH_RES.y), new float3(tm.PATCH_RES.x, h - neighbor.y, 0));
+            float3 b = cross(new float3(0, h - neighbor.z, -tm.PATCH_RES.y), new float3(-tm.PATCH_RES.x, h - neighbor.w, 0));
             return new float3(a.x + b.x, a.y + b.y, a.z + b.z);
         }
-
-        // public float3 Normal(int2 pos){
-        //     // returns normal of the (WIH)
-            
-        //     float3 n = Normal(pos + nw, right, down);
-        //     n += Normal(pos + ne, down, left);
-        //     n += Normal(pos + se, left, up);
-        //     n += Normal(pos + sw, up, right);
-        //     n += Normal(pos, left, up);
-        //     n += Normal(pos, up, right);
-        //     n += Normal(pos, right, down);
-        //     n += Normal(pos, down, left);
-
-        //     return normalize(n);
-        // }
-
-        // [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        // public float3 Normal(int2 pos, int2 a, int2 b){
-        //     return cross(
-        //         HiIVec(pos, 0, 0) - HiIVec(pos, a.x, a.y),
-        //         HiIVec(pos, 0, 0) - HiIVec(pos, b.x, b.y)
-        //     );
-        // }
 
         // Standing Water
 
@@ -408,8 +547,13 @@ namespace xshazwar.noize.geologic {
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float AllHeights(int idx, float maxFlowHeight = 25f){ //maxFlowHeight in WS m
+            return tm.HEIGHT * (height[idx] + pool[idx]) + maxFlowHeight * (flow[idx]);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float WIH(int idx){
-            return ep.HEIGHT * (height[idx] + pool[idx]);
+            return tm.HEIGHT * (height[idx] + pool[idx]);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -436,22 +580,17 @@ namespace xshazwar.noize.geologic {
         public float WIH(int2 pos, int dx, int dz){
             return WIH(SafeIdx(pos.x + dx, pos.y + dz));
         }
-
-        // [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        // public float3 HiIVec(int2 pos, int dx, int dz){
-        //     return new float3(dx, WIH(pos, dx, dz), dz);
-        // }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int SafeIdx(int x, int z){
             return getIdx(
-                clamp(x, 0, ep.TILE_RES.x - 1),
-                clamp(z, 0, ep.TILE_RES.y - 1));
+                clamp(x, 0, tm.GENERATOR_RES.x - 1),
+                clamp(z, 0, tm.GENERATOR_RES.y - 1));
         }        
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int SafeIdx(int2 pos){
-            return getIdx(clamp(pos, ZERO2, ep.TILE_RES - 1));
+            return getIdx(clamp(pos, ZERO2, tm.GENERATOR_RES - 1));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -461,13 +600,13 @@ namespace xshazwar.noize.geologic {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool InBounds(int2 pos){
-            if(pos.x < 0 || pos.y < 0 || pos.x >= ep.TILE_RES.x || pos.y >= ep.TILE_RES.y) return false;
+            if(pos.x < 0 || pos.y < 0 || pos.x >= tm.GENERATOR_RES.x || pos.y >= tm.GENERATOR_RES.y) return false;
             return true;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int getIdx(int x, int z){
-            return x * ep.TILE_RES.x + z;
+            return x * tm.GENERATOR_RES.x + z;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -477,12 +616,17 @@ namespace xshazwar.noize.geologic {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int getIdx(float2 pos){
-            return getIdx((int) pos.x, (int) pos.y);
+            return getIdx((int) round(pos.x), (int) round(pos.y));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int2 getPos(float2 pos){
+            return new int2((int) round(pos.x), (int) round(pos.y));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int2 getPos(int idx){
-            return new int2((idx / ep.TILE_RES.x), (idx % ep.TILE_RES.x));
+            return new int2((idx / tm.GENERATOR_RES.x), (idx % tm.GENERATOR_RES.x));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -494,14 +638,14 @@ namespace xshazwar.noize.geologic {
         public bool UnsafeNeighborhood(int x, int z){
             if(x < 1) return true;
             if(z < 1) return true;
-            if(x >= ep.TILE_RES.x - 1) return true;
-            if(z >= ep.TILE_RES.y - 1) return true;
+            if(x >= tm.GENERATOR_RES.x - 1) return true;
+            if(z >= tm.GENERATOR_RES.y - 1) return true;
             return false;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool OutOfBounds(int2 pos){
-            if(pos.x < 0 || pos.y < 0 || pos.x >= ep.TILE_RES.x || pos.y >= ep.TILE_RES.y) return true;
+            if(pos.x < 0 || pos.y < 0 || pos.x >= tm.GENERATOR_RES.x || pos.y >= tm.GENERATOR_RES.y) return true;
             return false;
         }
 
@@ -532,6 +676,55 @@ namespace xshazwar.noize.geologic {
             return nh;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void CollectNeighbors(int x, int z, ref NativeArray<int> n){
+            // up, right, down, left, ne, se, sw, nw
+            // we're converting to INT and keeping 2 sigdigs
+            if(UnsafeNeighborhood(x, z)){
+                n[0] = (int) (100f * WIH(SafeIdx(up.x + x, up.y + z)));
+                n[1] = (int) (100f * WIH(SafeIdx(right.x + x, right.y + z)));
+                n[2] = (int) (100f * WIH(SafeIdx(down.x + x, down.y + z)));
+                n[3] = (int) (100f * WIH(SafeIdx(left.x + x, left.y + z)));
+                n[4] = (int) (100f * WIH(SafeIdx(ne.x + x, ne.y + z)));
+                n[5] = (int) (100f * WIH(SafeIdx(se.x + x, se.y + z)));
+                n[6] = (int) (100f * WIH(SafeIdx(sw.x + x, sw.y + z)));
+                n[7] = (int) (100f * WIH(SafeIdx(nw.x + x, nw.y + z)));
+            }else{
+                n[0] = (int) (100f * WIH(getIdx(up.x + x, up.y + z)));
+                n[1] = (int) (100f * WIH(getIdx(right.x + x, right.y + z)));
+                n[2] = (int) (100f * WIH(getIdx(down.x + x, down.y + z)));
+                n[3] = (int) (100f * WIH(getIdx(left.x + x, left.y + z)));
+                n[4] = (int) (100f * WIH(getIdx(ne.x + x, ne.y + z)));
+                n[5] = (int) (100f * WIH(getIdx(se.x + x, se.y + z)));
+                n[6] = (int) (100f * WIH(getIdx(sw.x + x, sw.y + z)));
+                n[7] = (int) (100f * WIH(getIdx(nw.x + x, nw.y + z)));
+            }
+        }
+
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void CollectNeighborsAllHeights(int x, int z, ref NativeArray<int> n, float maxFlowHeight = 25f){
+            // up, right, down, left, ne, se, sw, nw
+            // we're converting to INT and keeping 2 sigdigs
+            if(UnsafeNeighborhood(x, z)){
+                n[0] = (int) (100f * AllHeights(SafeIdx(up.x + x, up.y + z), maxFlowHeight));
+                n[1] = (int) (100f * AllHeights(SafeIdx(right.x + x, right.y + z), maxFlowHeight));
+                n[2] = (int) (100f * AllHeights(SafeIdx(down.x + x, down.y + z), maxFlowHeight));
+                n[3] = (int) (100f * AllHeights(SafeIdx(left.x + x, left.y + z), maxFlowHeight));
+                n[4] = (int) (100f * AllHeights(SafeIdx(ne.x + x, ne.y + z), maxFlowHeight));
+                n[5] = (int) (100f * AllHeights(SafeIdx(se.x + x, se.y + z), maxFlowHeight));
+                n[6] = (int) (100f * AllHeights(SafeIdx(sw.x + x, sw.y + z), maxFlowHeight));
+                n[7] = (int) (100f * AllHeights(SafeIdx(nw.x + x, nw.y + z), maxFlowHeight));
+            }else{
+                n[0] = (int) (100f * AllHeights(getIdx(up.x + x, up.y + z), maxFlowHeight));
+                n[1] = (int) (100f * AllHeights(getIdx(right.x + x, right.y + z), maxFlowHeight));
+                n[2] = (int) (100f * AllHeights(getIdx(down.x + x, down.y + z), maxFlowHeight));
+                n[3] = (int) (100f * AllHeights(getIdx(left.x + x, left.y + z), maxFlowHeight));
+                n[4] = (int) (100f * AllHeights(getIdx(ne.x + x, ne.y + z), maxFlowHeight));
+                n[5] = (int) (100f * AllHeights(getIdx(se.x + x, se.y + z), maxFlowHeight));
+                n[6] = (int) (100f * AllHeights(getIdx(sw.x + x, sw.y + z), maxFlowHeight));
+                n[7] = (int) (100f * AllHeights(getIdx(nw.x + x, nw.y + z), maxFlowHeight));
+            }
+        }
 
         // Curviture Methods adapted from
         // https://github.com/Scrawk/Terrain-Topology-Algorithms/blob/afe65384254462073f41984c4c8e7e029275d830/Assets/TerrainTopology/Scripts/CreateTopolgy.cs
@@ -569,9 +762,9 @@ namespace xshazwar.noize.geologic {
                     height[getIdx(se.x + x, se.y + z)]
                 );
             }
-            z1 *= ep.HEIGHT;
-            z5 *= ep.HEIGHT;
-            z6 *= ep.HEIGHT;
+            z1 *= tm.HEIGHT;
+            z5 *= tm.HEIGHT;
+            z6 *= tm.HEIGHT;
 
             float zx = (z1.z + z6.x + z6.w - z1.x - z1.w - z6.y) / (6.0f * w);
             float zy = (z1.x + z1.y + z1.z - z6.y - z6.z - z6.w) / (6.0f * w);
@@ -673,23 +866,23 @@ namespace xshazwar.noize.geologic {
             return sign_ * log_ ;
         }
 
-        public void UpdateFlowMapFromTrack(int x, int z){
+        public void UpdateFlowMapFromTrack(int x, int z, float FLOW_LOSS_RATE, float SURFACE_EVAPORATION_RATE){
             int i = getIdx(x, z);
             float pv = flow[i];
             float tv = track[i];
             float poolV = pool[i];
             if(poolV > MINFLOWPOOL){
-                flow[i] = ((1f - 0.1f * ep.FLOW_LOSS_RATE) * pv);
+                flow[i] = ((1f - 0.1f * FLOW_LOSS_RATE) * pv);
             }
             // track does not accumulate to flow where there's a pool. Only decays
             else if(tv > 0f){
-                flow[i] = ((1f - ep.FLOW_LOSS_RATE) * pv) + (ep.FLOW_LOSS_RATE * 50.0f * tv) / (1f + 50.0f* tv);
+                flow[i] = ((1f - FLOW_LOSS_RATE) * pv) + (FLOW_LOSS_RATE * 50.0f * tv) / (1f + 50.0f* tv);
             }else{
-                flow[i] = (1f - ep.FLOW_LOSS_RATE) * pv;
+                flow[i] = (1f - FLOW_LOSS_RATE) * pv;
             }
             track[i] = 0f;
             // Evaporation rate of pools
-            pool[i] = max(poolV - (ep.SURFACE_EVAPORATION_RATE / ep.HEIGHT), 0f);
+            pool[i] = max(poolV - (SURFACE_EVAPORATION_RATE / tm.HEIGHT), 0f);
         }
 
         public void ChangeVegetationDensity(int x, int z, float mag){
@@ -747,6 +940,7 @@ namespace xshazwar.noize.geologic {
             int z,
             ref NativeArray<FloodedNeighbor> buff,
             ref NativeQueue<BeyerParticle>.ParallelWriter particleQueue,
+            ref ErosionParameters ep,
             bool drainParticles
         ){
             int idx = getIdx(x, z);
@@ -757,7 +951,7 @@ namespace xshazwar.noize.geologic {
             }
             // Debug.Log($"dist >> {hWater}");
             float tHeight = hLand + hWater;
-            if(x == 0 || z == 0 || x == ep.TILE_RES.x - 1 || z == ep.TILE_RES.y - 1){
+            if(x == 0 || z == 0 || x == tm.GENERATOR_RES.x - 1 || z == tm.GENERATOR_RES.y - 1){
                 buff[0] = new FloodedNeighbor(SafeIdx(up.x + x, up.y + z), ref this);
                 buff[1] = new FloodedNeighbor(SafeIdx(right.x + x, right.y + z), ref this);
                 buff[2] = new FloodedNeighbor(SafeIdx(down.x + x, down.y + z), ref this);
@@ -779,12 +973,15 @@ namespace xshazwar.noize.geologic {
                 if( buff[e].water <= 0f && hLand >= buff[e].height){
                     // Found Drain!
                     if(drainParticles){
-                        particleQueue.Enqueue(
-                            new BeyerParticle(
+                        BeyerParticle p = new BeyerParticle(
+                                (ushort) 64000,
                                 getPos(buff[e].idx),
                                 ep,
+                                tm,
                                 hWater
-                            )
+                            );
+                        particleQueue.Enqueue(
+                            p
                         );
                     }else{
                         buff[e].Commit(hWater, ref this);
@@ -1097,45 +1294,83 @@ namespace xshazwar.noize.geologic {
     public enum Heading : byte {
         // Exclusive direction
         N    = 0b_00000001,
-        S    = 0b_00000010,
         E    = 0b_00000100,
+        S    = 0b_00000010,
         W    = 0b_00001000,
-        NW   = 0b_00001001,
         NE   = 0b_00000101,
-        SW   = 0b_00001010,
         SE   = 0b_00000110,
+        SW   = 0b_00001010,
+        NW   = 0b_00001001,
         NONE = 0b_00000000
     }
 
     public static class HeadingExt {
 
-        public static int2 ToInt2(this Heading heading){
-            byte b = (byte) heading;
-            return new int2(
-                ((b & (byte) Heading.E) == b) ? 1 : ((b & (byte) Heading.W) == b ? -1 : 0 ),
-                ((b & (byte) Heading.N) == b) ? 1 : ((b & (byte) Heading.S) == b ? -1 : 0 )
-            );
+        public static readonly Heading[] WTORDER = new Heading[8] {
+            Heading.N,
+            Heading.E,
+            Heading.S,
+            Heading.W,
+            Heading.NE,
+            Heading.SE,
+            Heading.SW,
+            Heading.NW
+        };
+
+        public static readonly Heading[] ADJACENT = new Heading[8] {
+            Heading.N,
+            Heading.NE,
+            Heading.E,
+            Heading.SE,
+            Heading.S,
+            Heading.SW,
+            Heading.W,
+            Heading.NW
+        };
+
+        public static int ToWorldTileIdx(this Heading heading){
+            for(int i = 0; i < 8; i++){
+                if(heading == WTORDER[i]) return i;
+            }
+            return -1;
+        }
+
+        public static void AdjacentHeadings(this Heading heading, out Heading left, out Heading right){
+            int i;
+            for(i = 0; i < 8; i++){
+                if(heading == ADJACENT[i]) break;
+            }
+            if(i == 0){
+                left = ADJACENT[7];
+                right = ADJACENT[1];
+            }else if(i == 7){
+                left = ADJACENT[6];
+                right = ADJACENT[0];
+            }else{
+                left = ADJACENT[i - 1];
+                right = ADJACENT[i + 1];
+            }
         }
 
         public static String Name(this Heading heading){
-            return Enum.GetName( typeof(Heading), heading);
+            return $"{(byte) heading}";
         }
 
-        public static void Orthogonal(this Heading h, out int2 a, out int2 b){
-            if((byte) h < 3){
-                a = new int2(1, 0);
-                b = new int2(-1, 0);
-            }else if(h == Heading.E || h == Heading.W){
-                a = new int2(0, 1);
-                b = new int2(0, -1);
-            }else if(h == Heading.NW || h == Heading.SE){
-                a = new int2(1, 1);
-                b = new int2(-1, -1);
-            }else{
-                a = new int2(1, -1);
-                b = new int2(-1, 1);
-            }
-        }
+        // public static void Orthogonal(this Heading h, out int2 a, out int2 b){
+        //     if((byte) h < 3){
+        //         a = new int2(1, 0);
+        //         b = new int2(-1, 0);
+        //     }else if(h == Heading.E || h == Heading.W){
+        //         a = new int2(0, 1);
+        //         b = new int2(0, -1);
+        //     }else if(h == Heading.NW || h == Heading.SE){
+        //         a = new int2(1, 1);
+        //         b = new int2(-1, -1);
+        //     }else{
+        //         a = new int2(1, -1);
+        //         b = new int2(-1, 1);
+        //     }
+        // }
 
         public static Heading FromInt2(int2 dir){
             Heading b = 0;
@@ -1166,6 +1401,45 @@ namespace xshazwar.noize.geologic {
             }
             return b;
         }
+
+        public static int2 ToInt2(this Heading heading){
+            byte b = (byte) heading;
+            
+            int x = (b >> 2 & 1) != 0 ? 1 : (((b >> 3 & 1) != 0) ? -1 : 0);
+            int y = (b >> 0 & 1) != 0 ? 1 : (((b >> 1 & 1) != 0) ? -1 : 0);
+            // int x = ((b & (byte) Heading.E) == b) ? 1 : ((b & (byte) Heading.W) == b ? -1 : 0 );
+            // int y = ((b & (byte) Heading.N) == b) ? 1 : ((b & (byte) Heading.S) == b ? -1 : 0 );
+            return new int2(
+                (b >> 2 & 1) != 0 ? 1 : (((b >> 3 & 1) != 0) ? -1 : 0),
+                (b >> 0 & 1) != 0 ? 1 : (((b >> 1 & 1) != 0) ? -1 : 0)
+            );
+        }
+
+        // public static void TestToInt2(){
+        //     PrintInt2(ToInt2(Heading.N));
+        //     PrintInt2(ToInt2(Heading.E));
+        //     PrintInt2(ToInt2(Heading.S));
+        //     PrintInt2(ToInt2(Heading.W));
+        //     PrintInt2(ToInt2(Heading.NE));
+        //     PrintInt2(ToInt2(Heading.SE));
+        //     PrintInt2(ToInt2(Heading.SW));
+        //     PrintInt2(ToInt2(Heading.NW));
+        //     throw new Exception();
+        // }
+
+        // public static void TestInt2Conversion(int2 d){
+        //     Heading h = FromInt2(d);
+        //     int2 d2 = ToInt2(h);
+        //     bool2 ok = (d2 == d);
+        //     if(!ok.x || !ok.y){
+        //         byte b = (byte) h;
+        //         Debug.LogError($"mismatch {b} !!! in: {d.x}, {d.y}");
+        //     }
+        // }
+
+        // public static void PrintInt2(int2 r){
+        //     Debug.Log($"{r.x}, {r.y}");
+        // }
     }
 
 }
