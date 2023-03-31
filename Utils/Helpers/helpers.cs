@@ -1,6 +1,6 @@
 using System;
 
-  namespace xshazwar.noize.cpu.mutate {
+  namespace xshazwar.noize {
     
     static class Helpers {
         public static void Fill<T> (T[] array, int count, T value, int threshold = 32)

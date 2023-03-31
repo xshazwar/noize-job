@@ -1,0 +1,16 @@
+{
+    "name": "xshazwar.unityaddons",
+    "rootNamespace": "",
+    "references": [
+        "GUID:4bdfb2239705740718731d0b4d54061d"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

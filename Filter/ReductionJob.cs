@@ -7,7 +7,9 @@ using UnityEngine;
 
 using static Unity.Mathematics.math;
 
-namespace xshazwar.noize.cpu.mutate {
+using xshazwar.noize.pipeline;
+
+namespace xshazwar.noize.filter {
     using Unity.Mathematics;
 
 	[BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
@@ -31,10 +33,10 @@ namespace xshazwar.noize.cpu.mutate {
 		public static JobHandle ScheduleParallel (
 			NativeSlice<float> srcL, //receives output
             NativeSlice<float> srcR,
+			NativeSlice<float> tmp, // long lived temporary buffer for rw tiles
             int resolution,
             JobHandle dependency
 		) {
-			NativeArray<float> tmp = new NativeArray<float>(srcL.Length, Allocator.TempJob);
 			var job = new ReductionJob<G, DL, DR>();
 			job.generator.Resolution = resolution;
             job.generator.JobLength = resolution;
@@ -47,13 +49,14 @@ namespace xshazwar.noize.cpu.mutate {
 			JobHandle handle = job.ScheduleParallel(
 				job.generator.JobLength, 1, dependency
 			);
-			return tmp.Dispose(handle);
+			return TileHelpers.SWAP_RWTILE(srcL, tmp, handle);
 		}
 	}
 
 	public delegate JobHandle ReductionJobScheduleDelegate (
         NativeSlice<float> srcL, //receives output
         NativeSlice<float> srcR,
+		NativeSlice<float> tmp, // long lived temporary buffer for rw tiles
         int resolution,
         JobHandle dependency
 	);

@@ -1,14 +1,20 @@
 {
 	"name": "xshazwar.noize",
 	"version": "0.0.1",
-	"description": "Noise Generation, Meshing, Filter on Burst",
+	"description": "Noise Generation, Meshing, Filtering on Burst",
 	"displayName": "Noize Job",
 	"unity": "2020.3",
 	"samples": [
+		{
+
+			"displayName": "Basic Demo",
+			"description": "Meshing and Noise Example",
+			"path": "BasicDemo~"
+		}
 	],
 	"dependencies": {
 	    "com.unity.jobs": "0.11.0-preview.6",
-	    "com.unity.collections": "1.0.0-pre.5",
+	    "com.unity.collections": "1.4.0",
 	    "com.unity.mathematics": "1.2.1",
 	    "com.unity.burst": "1.5.4"
 	 }

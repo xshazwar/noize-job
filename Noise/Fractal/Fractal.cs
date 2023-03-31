@@ -10,7 +10,10 @@ using UnityEngine;
 
 using static Unity.Mathematics.math;
 
-namespace xshazwar.noize.cpu.mutate {
+using xshazwar.noize.pipeline;
+using xshazwar.noize.filter;
+
+namespace xshazwar.noize.generate {
     using Unity.Mathematics;
 
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true)]
@@ -25,7 +28,7 @@ namespace xshazwar.noize.cpu.mutate {
 		D data;
 		public void Execute (int i) => generator.Execute(i, data);
 
-        public static float CalcFractalNormValue(float hurst, int octaves){
+        public static float CalcFractalNormValue(float hurst, int octaves, float startingAmplitude){
             float G = math.exp2(-hurst);
             float a = 1f;
             float t = 0;
@@ -40,6 +43,9 @@ namespace xshazwar.noize.cpu.mutate {
 			NativeSlice<float> src,
             int resolution,
             float hurst,
+            float startingAmplitude,
+            float stepdown,
+            float detuneRate,
             int octaves,
             int xpos,
             int zpos,
@@ -51,8 +57,11 @@ namespace xshazwar.noize.cpu.mutate {
 			job.generator.Resolution = resolution;
             job.generator.JobLength = resolution;
             job.generator.Hurst = hurst;
+            job.generator.DetuneRate = detuneRate;
+            job.generator.StepDown = stepdown;
             job.generator.NoiseSize = noiseSize;
-            job.generator.NormalizationValue = CalcFractalNormValue(hurst, octaves);
+            job.generator.StartingAmplitude = startingAmplitude;
+            job.generator.NormalizationValue = CalcFractalNormValue(hurst, octaves, startingAmplitude);
             job.generator.SetPosition(xpos, zpos);
             job.generator.OctaveCount = octaves;
 			job.data.Setup(
@@ -68,6 +77,9 @@ namespace xshazwar.noize.cpu.mutate {
         NativeSlice<float> src,
         int resolution,
         float hurst,
+        float startingAmplitude,
+        float stepdown,
+        float detuneRate,
         int octaves,
         int xpos,
         int zpos,
@@ -81,9 +93,12 @@ namespace xshazwar.noize.cpu.mutate {
         public int JobLength {get; set;}
         public int Resolution {get; set;}
 
-        // [0, 1]
+        // [0, 1] recommended, but we allow up to 2
         public float Hurst {get; set;}
         public int OctaveCount {get; set;}
+        public float StartingAmplitude {get; set;}
+        public float StepDown {get; set;} // 2f
+        public float DetuneRate {get; set;} // 0f [-.05 -> .05]
 
         public float NormalizationValue {get; set;}
 
@@ -99,15 +114,17 @@ namespace xshazwar.noize.cpu.mutate {
         float NoiseValue(int x, int z){
             float xi = ((float) x + Position.x) / (float) NoiseSize;
             float zi = ((float) z + Position.y) / (float) NoiseSize;
+            float Detune = 0f;
             float G = math.exp2(-Hurst);
-            float f = 1;
-            float a = 0.9f;
+            float f = 1f;
+            float a = StartingAmplitude;
             float t = 0;
             for (int i = 0; i < OctaveCount; i++){
                 float xV = f * xi;
                 float zV = f * zi;
                 t += a * noiseGenerator.NoiseValue(xV, zV);
-                f *= 2;
+                Detune += DetuneRate;
+                f *= (StepDown - Detune);
                 a *= G;
             }
             return t / NormalizationValue;
@@ -122,56 +139,140 @@ namespace xshazwar.noize.cpu.mutate {
     }
 
     public struct PerlinGetter: IMakeNoise {
+        private const float RV = 1f;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float NoiseValue(float x, float z){
             float2 coord = float2(x, z) ;
-            return noise.cnoise(coord);
+            return Rectify(noise.cnoise(coord));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float Rectify(float value){
+            return (RV + value) / 2 * RV;
+        }
+    }
+
+    public struct PerlinGetterDomainRotated: IMakeNoise {
+        private const float RV = 1f;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float NoiseValue(float x, float z){
+            float xz = x + z;
+            float s2 = xz * -0.211324865405187f;
+            float xr = x + s2;
+            float zr = z + s2;
+            float yr = xz * -0.577350269189626f;
+            float3 coord = float3(xr, zr, yr) ;
+            return Rectify(noise.cnoise(coord));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float Rectify(float value){
+            return (RV + value) / 2 * RV;
         }
     }
 
     public struct PeriodicPerlinGetter: IMakeNoise {
+        private const float RV = 1f;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float NoiseValue(float x, float z){
             
             float2 period = float2(1010, 102);
             float2 coord = float2(x, z) ;
-            return noise.psrnoise(coord, period);
+            return Rectify(noise.psrnoise(coord, period));
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float Rectify(float value){
+            return (RV + value) / 2 * RV;
         }
     }
 
     public struct RotatedSimplexGetter: IMakeNoise {
+        private const float RV = 1f;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float NoiseValue(float x, float z){
             
             float2 period = float2(1010, 102);
             float2 coord = float2(x, z) ;
-            return noise.psrnoise(coord, period, .62f);
+            return Rectify(noise.psrnoise(coord, period, .62f));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float Rectify(float value){
+            return (RV + value) / 2 * RV;
         }
     }
 
     public struct SinGetter: IMakeNoise {
+        private const float RV = 1f;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float NoiseValue(float x, float z){
             
             float2 coord = float2(x, z) ;
-            float2 v = 0.5f + (0.5f * math.sin(coord));
+            return Rectify(math.sin(coord));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float Rectify(float2 value){
+            float2 v = 0.5f + (0.5f * value);
             return v.x * v.y;
         }
     }
 
     public struct SimplexGetter: IMakeNoise {
+        
+        private const float RV = 1f;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float NoiseValue(float x, float z){
             float2 coord = float2(x, z) ;
-            return noise.snoise(coord);
+            return Rectify(noise.snoise(coord));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float Rectify(float value){
+            return (RV + value) / 2 * RV;
+        }
+    }
+
+    public struct SimplexGetterDomainRotated: IMakeNoise {
+        private const float RV = 1f;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public float NoiseValue(float x, float z){
+            float xz = x + z;
+            float s2 = xz * -0.211324865405187f;
+            float xr = x + s2;
+            float zr = z + s2;
+            float yr = xz * -0.577350269189626f;
+            float3 coord = float3(xr, zr, yr) ;
+            return Rectify(noise.snoise(coord));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float Rectify(float value){
+            return (RV + value) / 2 * RV;
         }
     }
 
     public struct CellularGetter: IMakeNoise {
+        private const float RV = 1f;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float NoiseValue(float x, float z){
             float2 coord = float2(x, z) ;
-            float2 v = noise.cellular(coord);
+            return Rectify(noise.cellular(coord));
+
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float Rectify(float2 value){
+            float2 v = (RV + value) / 2 * RV;
             return v.x * v.y;
         }
     }
