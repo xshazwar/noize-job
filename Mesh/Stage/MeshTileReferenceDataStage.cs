@@ -24,13 +24,14 @@ namespace xshazwar.noize.mesh {
         // TODO swap between jobs depending on mesh resolution to save memory
 		static HeightMapMeshJobScheduleDelegate[] jobs = {
 			HeightMapMeshJob<SquareGridHeightMap, PositionStream32>.ScheduleParallel,
-            HeightMapMeshJob<OvershootSquareGridHeightMap, PositionStream32>.ScheduleParallel
+            HeightMapMeshJob<OvershootSquareGridHeightMap, PositionStream32>.ScheduleParallel,
+            HeightMapMeshJob<FlatHexagonalGridHeightMap, PositionStream32>.ScheduleParallel
 		};
 
         private Mesh currentMesh;
         private Mesh.MeshDataArray meshDataArray;
 		private Mesh.MeshData meshData;
-        public MeshType meshType = MeshType.OvershootSquareGridHeightMap;
+        public MeshType meshType;
         public string contextAlias;
 
         private string getBufferName(MeshStageData d){

@@ -29,7 +29,9 @@ namespace xshazwar.noize.geologic {
     public class LiveErosion : MonoBehaviour, IProvideGeodata {
         
         // Tile Data
+        [SerializeField]
         private TileRequest tileData;
+        // [SerializeField]
         private TileSetMeta tileMeta;
 
         // Erosion Settings
@@ -55,6 +57,8 @@ namespace xshazwar.noize.geologic {
         public NativeArray<float> streamMap {get; private set;}
         public NativeArray<float> plantDensityMap {get; private set;}
         public NativeArray<float> particleTrack;
+
+        public int heightMapSize = -1;
         public NativeArray<float> originalHeightMap {get; private set;}
         public NativeArray<float> heightMap {get; private set;}
         // 
@@ -73,11 +77,16 @@ namespace xshazwar.noize.geologic {
         public bool debugDescent = false;
         // Ready Flags
         public bool paramsReady = false;
-        public bool ready = false;
+        public bool buffersReady = false;
+        public bool isSetup = false;
         public bool updateContinuous = false;
         public bool updateSingle = false;
         public bool resetLand = false;
         public bool resetWater = false;
+
+        public MeshType meshType = MeshType.OvershootSquareGridHeightMap;
+
+
         [SerializeField]
         public bool performErosion = true;
         [SerializeField]
@@ -102,9 +111,11 @@ namespace xshazwar.noize.geologic {
         private ComputeBuffer argsBuffer;
         private uint[] args = new uint[5] { 0, 0, 0, 0, 0 };
         private Bounds bounds;
-
+        // events
         public Action OnGeodataReady {get; set;}
         public Action OnWaterUpdate {get; set;}
+        public Action DisabledEvent {get; set;}
+        public Action EnabledEvent {get; set;}
 
     #if UNITY_EDITOR
         
@@ -204,14 +215,15 @@ namespace xshazwar.noize.geologic {
             if(!paramsReady || !CheckDepends()){
                 return;
             }
-            erosionJobCtl = new StandAloneJobHandler();
+            Debug.LogWarning("Setting up LiveErosion component.");
 
             debugViz = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_DEBUG"), tileMeta.GENERATOR_RES.x * tileMeta.GENERATOR_RES.x);
 
             // precalculated buffers
             originalHeightMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT"));
-            heightMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT_COPY"), originalHeightMap.Length);
-            
+            heightMapSize = originalHeightMap.Length;
+            heightMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT_COPY"), heightMapSize);
+
             #if NJ_DBG_PARTFLOW
                 QUEUE_SIZE = 1;
             #else
@@ -232,11 +244,7 @@ namespace xshazwar.noize.geologic {
             poolMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_WATERMAP_POOL"), tileMeta.GENERATOR_RES.x * tileMeta.GENERATOR_RES.x, NativeArrayOptions.ClearMemory); // doesn't need clear
             plantDensityMap = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("PARTERO_PLANTDENSITYMAP"), tileMeta.GENERATOR_RES.x * tileMeta.GENERATOR_RES.x, NativeArrayOptions.ClearMemory); // doesn't need clear
             
-            poolBuffer = new ComputeBuffer(heightMap.Length, 4); // sizeof(float)
-            heightBuffer = new ComputeBuffer(heightMap.Length, 4); // sizeof(float)
-            streamBuffer = new ComputeBuffer(heightMap.Length, 4); // sizeof(float)
-            argsBuffer = new ComputeBuffer(1, args.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
-            
+
             ResetHeightMap();
 
             poolMatProps = new MaterialPropertyBlock();
@@ -249,19 +257,49 @@ namespace xshazwar.noize.geologic {
 
             bounds = new Bounds(transform.position, new Vector3(10000, 10000, 10000));
             waterMesh = MeshHelper.SquarePlanarMesh(tileMeta.TILE_RES.x, tileMeta.HEIGHT, tileMeta.TILE_SIZE.x);
-            args[0] = (uint)waterMesh.GetIndexCount(0);
-            args[1] = (uint)1;
-            argsBuffer.SetData(args);
             #if UNITY_EDITOR
             CreateTexture();
             #endif
-            ready = true;
+            isSetup = true;
             ApplyTexture();
             OnPostInit();
+        }
+        public void SetBuffers(){
+            if(heightMapSize < 0){
+                heightMapSize = stateManager.GetBuffer<float, NativeArray<float>>(getBufferName("TERRAIN_HEIGHT")).Length;
+            }
+            if(heightMapSize < 0){
+                Debug.Log("No height map available to set buffers");
+                return;
+            }
+            poolBuffer = new ComputeBuffer(heightMapSize, 4); // sizeof(float)
+            heightBuffer = new ComputeBuffer(heightMapSize, 4); // sizeof(float)
+            streamBuffer = new ComputeBuffer(heightMapSize, 4); // sizeof(float)
+            argsBuffer = new ComputeBuffer(1, args.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
+            args[0] = (uint)waterMesh.GetIndexCount(0);
+            args[1] = (uint)1;
+            argsBuffer.SetData(args);
+            erosionJobCtl = new StandAloneJobHandler();
+            buffersReady = true;
+        }
+
+        public void ReleaseBuffers(){
+            if(argsBuffer != null){
+                argsBuffer.Release();
+                argsBuffer = null;
+                poolBuffer.Release();
+                poolBuffer = null;
+                heightBuffer.Release();
+                heightBuffer = null;
+                streamBuffer.Release();
+                streamBuffer = null;
+            }
+            buffersReady = false;
         }
 
         private void OnPostInit(){
             OnGeodataReady?.Invoke();
+            EnabledEvent?.Invoke();
         }
         
         private void ResetHeightMap(){
@@ -299,10 +337,18 @@ namespace xshazwar.noize.geologic {
             heightBuffer.SetData(heightMap);
         }
 
+        static HeightMapMeshJobScheduleDelegate[] jobs = {
+			HeightMapMeshJob<SquareGridHeightMap, PositionStream32>.ScheduleParallel,
+            HeightMapMeshJob<OvershootSquareGridHeightMap, PositionStream32>.ScheduleParallel,
+            HeightMapMeshJob<FlatHexagonalGridHeightMap, PositionStream32>.ScheduleParallel
+		};
+
         public JobHandle ScheduleMeshUpdate(JobHandle dep){
             meshDataArray = Mesh.AllocateWritableMeshData(1);
 			meshData = meshDataArray[0];
-			return HeightMapMeshJob<OvershootSquareGridHeightMap, PositionStream32>.ScheduleParallel(
+            return jobs[(int)meshType](
+            // return HeightMapMeshJob<FlatHexagonalGrid, PositionStream32>.ScheduleParallel(
+            // return HeightMapMeshJob<OvershootSquareGridHeightMap, PositionStream32>.ScheduleParallel(
                 landMesh,
                 meshData,
                 tileMeta.TILE_RES.x,
@@ -329,11 +375,22 @@ namespace xshazwar.noize.geologic {
             });
         }
 
+        private void TestResume(){
+            NativeArray<int> _test = stateManager.GetBuffer<int, NativeArray<int>>("__PARTERO_RESUME_TEST", 1, NativeArrayOptions.ClearMemory);
+            Debug.Log($"test value is {_test[0]}");
+        }
+
         public void Update(){
-            if(!ready){
+            if(!isSetup){
                 Setup();
                 return;
-            }else if(resetLand){
+            }
+            else if(!buffersReady){
+                SetBuffers();   
+                TestResume();
+                return;
+            }
+            else if(resetLand){
                 ResetHeightMap();
                 resetLand = false;
             }else if(resetWater){
@@ -353,9 +410,7 @@ namespace xshazwar.noize.geologic {
                     }
                     PushBuffer();
                     #if UNITY_EDITOR
-                    // if(updateTexture){
                         ApplyTexture();
-                    // }
                     #endif
                 #endif
                 
@@ -423,11 +478,11 @@ namespace xshazwar.noize.geologic {
             handle = SetRGBA32Job.ScheduleRun(streamMap, waterControl, ColorChannelByte.B, handle, 2f);
 
             // cavity
-            handle = SetRGBA32Job.ScheduleRun(streamMap, textureControl, ColorChannelByte.G, handle, 3f);
+            handle = SetRGBA32Job.ScheduleRun(streamMap, textureControl, ColorChannelByte.G, handle, 1f);
             handle = CurvitureMapJob.ScheduleRun(textureControl, heightMap, tileMeta, ColorChannelByte.G, tileMeta.GENERATOR_RES.x, handle);
             
             // erosion
-            handle = SetRGBA32Job.ScheduleRun(streamMap, textureControl, ColorChannelByte.A, handle, 1f);
+            handle = SetRGBA32InverseJob.ScheduleRun(streamMap, textureControl, ColorChannelByte.A, handle, 3f);
             
             if(performErosion){
                 handle = ScheduleMeshUpdate(handle);
@@ -442,11 +497,9 @@ namespace xshazwar.noize.geologic {
             // Graphics.DrawMeshInstancedIndirect(waterMesh, 0, streamMaterial, bounds, argsBuffer, 0, streamMatProps);
         }
 
-        public void OnDestroy(){
-            argsBuffer.Release();
-            poolBuffer.Release();
-            heightBuffer.Release();
-            streamBuffer.Release();
+        public void OnDisable(){
+            DisabledEvent?.Invoke();
+            ReleaseBuffers();
         }
 
     // Primary Debug Workflow

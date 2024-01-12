@@ -3,13 +3,19 @@ using System;
 using UnityEngine;
 
 using static Unity.Mathematics.math;
+using xshazwar.noize.mesh;
 
 namespace xshazwar.noize.tile {
     using Unity.Mathematics;
 
-    public class TileRequest{
+    [Serializable]
+    public struct TileRequest: IEquatable<TileRequest>{
         public string uuid;
         public Vector2Int pos;
+
+        public bool Equals(TileRequest other){
+            return uuid.Equals(other.uuid);
+        }
     }
 
     public struct TileSetMeta : IEquatable<TileSetMeta>{

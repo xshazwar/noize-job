@@ -9,6 +9,7 @@ namespace xshazwar.noize.editor {
     public class LiveErosionEditor : Editor
     {
         SerializedProperty tex2d;
+        SerializedProperty meshType;
         SerializedProperty updateContinuous;
         SerializedProperty updateSingle;
         SerializedProperty resetLand;
@@ -21,12 +22,27 @@ namespace xshazwar.noize.editor {
         SerializedProperty poolColor;
         SerializedProperty debugDescent;
         Texture2D texture;
-        LiveErosion erosionctl;
+        LiveErosion? erosionctl = null;
 
         void OnEnable(){
-            // tex2d = serializedObject.FindProperty("texture");
-            // tex2d = serializedObject.FindProperty("waterControl");
+            if (erosionctl == null){
+                erosionctl = (LiveErosion) target;
+                erosionctl.EnabledEvent += Connect;
+                erosionctl.DisabledEvent += Disconnect;
+            }
+            Init();
+        }
+
+        void OnDisable(){
+            erosionctl.EnabledEvent -= Connect;
+            erosionctl.DisabledEvent -= Disconnect;
+            erosionctl = null;
+            tex2d = null;
+        }
+
+        void Init(){
             tex2d = serializedObject.FindProperty("texture");
+            meshType = serializedObject.FindProperty("meshType");
             updateContinuous = serializedObject.FindProperty("updateContinuous");
             updateSingle = serializedObject.FindProperty("updateSingle");
             resetLand = serializedObject.FindProperty("resetLand");
@@ -38,8 +54,18 @@ namespace xshazwar.noize.editor {
             drawPools = serializedObject.FindProperty("drawPools");
             poolColor = serializedObject.FindProperty("byteColor");
             debugDescent = serializedObject.FindProperty("debugDescent");
-            erosionctl = (LiveErosion) target;
+            Connect();
+            
+        }
+
+        void Connect(){
+            tex2d = serializedObject.FindProperty("texture");
+            texture = null;
             texture = tex2d.objectReferenceValue as Texture2D;
+        }
+        void Disconnect(){
+            tex2d = null;
+            texture = Texture2D.blackTexture;
         }
 
         public override void OnInspectorGUI()
@@ -53,13 +79,13 @@ namespace xshazwar.noize.editor {
                 erosionctl.SaveErosionState();
                 Debug.Log("Chili Dog!");
             }
-
+            
+            EditorGUILayout.PropertyField(meshType);
             EditorGUILayout.PropertyField(debugDescent);
             EditorGUILayout.PropertyField(resetLand);
             EditorGUILayout.PropertyField(resetWater);
 
             EditorGUILayout.PropertyField(drawPools);
-            EditorGUILayout.PropertyField(erosionSettings);
             // this is cheesy but it works
             // sticking the texture into a label didn't
             EditorGUILayout.PropertyField(updateTexture);
@@ -68,7 +94,7 @@ namespace xshazwar.noize.editor {
             EditorGUILayout.PropertyField(updateSingle);
             EditorGUILayout.PropertyField(updateContinuous);
             EditorGUILayout.PropertyField(poolColor);
-            
+            EditorGUILayout.PropertyField(erosionSettings);
             if((bool)updateTexture.boolValue){
                 EditorGUILayout.PropertyField(showMap);
                 Rect space = EditorGUILayout.BeginHorizontal();

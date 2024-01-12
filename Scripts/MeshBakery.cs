@@ -70,6 +70,10 @@ namespace xshazwar.noize.scripts {
         }
 
         public void ServiceQueue(){
+            // TODO NULLPOINTER
+            if (workQueue == null){
+                return;
+            }
             if (workQueue.Count == 0){
                 return;
             }

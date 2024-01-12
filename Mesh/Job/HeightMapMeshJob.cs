@@ -24,8 +24,8 @@ namespace xshazwar.noize.mesh {
 		public static JobHandle ScheduleParallel (
 			Mesh mesh,
 			Mesh.MeshData meshData,
-			int resolution, // tileResolution
-			int inputResolution, // generatorResolution
+			int meshResolution, // tileResolution
+			int dataResolution, // generatorResolution
 			int marginPix,       // margin (verts?)
 			float tileHeight,    // WS height
 			float tileSize,      // WS width
@@ -33,13 +33,14 @@ namespace xshazwar.noize.mesh {
 			JobHandle dependency
 		) {
 			var job = new HeightMapMeshJob<G, S>();
-			job.generator.Resolution = resolution;
-			job.generator.InputResolution = inputResolution;
+			job.generator.Resolution = meshResolution;
+			job.generator.DataResolution = dataResolution;
 			job.generator.TileSize = tileSize;
 			job.generator.Height = tileHeight;
-			job.generator.MarginPix = marginPix;
-			job.generator.NormalStrength = 8f;
+			job.generator.DataOverdraw = marginPix;
+			job.generator.NormalStrength = 4f;
             job.heights = heights;
+			((IMeshHeightGenerator)job.generator).TestRange();
 			job.streams.Setup(
 				meshData,
 				mesh.bounds = job.generator.Bounds,
@@ -55,8 +56,8 @@ namespace xshazwar.noize.mesh {
 	public delegate JobHandle HeightMapMeshJobScheduleDelegate (
 		Mesh mesh,
 		Mesh.MeshData meshData,
-		int resolution,
-		int inputResolution,
+		int meshResolution,
+		int dataResolution,
 		int marginPix,
 		float tileHeight,
 		float tileSize,

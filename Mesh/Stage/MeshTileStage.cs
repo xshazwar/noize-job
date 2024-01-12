@@ -6,11 +6,6 @@ using UnityEngine.Profiling;
 using Unity.Collections;
 using Unity.Jobs;
 
-// using xshazwar.unity;
-// #if UNITY_EDITOR
-// using xshazwar.unity.editor;
-// #endif
-
 using xshazwar.noize.mesh;
 using xshazwar.noize.mesh.Generators;
 using xshazwar.noize.mesh.Streams;
@@ -19,17 +14,13 @@ using xshazwar.noize.pipeline;
 
 namespace xshazwar.noize.mesh {
 
-    public enum MeshType {
-        SquareGridHeightMap,
-        OvershootSquareGridHeightMap
-    };
-
     [CreateAssetMenu(fileName = "MeshTileStage", menuName = "Noize/Output/MeshTile", order = 2)]
     public class MeshTileStage: PipelineStage {
         // TODO swap between jobs depending on mesh resolution to save memory
 		static HeightMapMeshJobScheduleDelegate[] jobs = {
 			HeightMapMeshJob<SquareGridHeightMap, PositionStream32>.ScheduleParallel,
-            HeightMapMeshJob<OvershootSquareGridHeightMap, PositionStream32>.ScheduleParallel
+            HeightMapMeshJob<OvershootSquareGridHeightMap, PositionStream32>.ScheduleParallel,
+            HeightMapMeshJob<FlatHexagonalGridHeightMap, PositionStream32>.ScheduleParallel
 		};
 
         private Mesh currentMesh;

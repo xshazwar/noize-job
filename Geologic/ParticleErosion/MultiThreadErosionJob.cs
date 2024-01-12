@@ -480,6 +480,58 @@ namespace xshazwar.noize.geologic {
     }
 
     [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct SetRGBA32InverseJob : IJobFor
+    {
+        ColorChannelByte color;
+        [ReadOnly]
+        public NativeArray<float> src;
+        [NativeDisableContainerSafetyRestriction]
+        public NativeSlice<byte> data;
+        public int dataRes;
+        public int offset;
+        public int meshRes;
+        public float scale;
+
+        public void Execute (int z)
+        {
+            // z += offset;
+            int srcZ = z + offset;
+            int srcI = 0;
+            int i = 0;
+            for (int x = 0; x < meshRes; x++){
+                srcI = srcZ * dataRes + x + offset;
+                i = z * meshRes + x;
+                byte b = (byte) (clamp(1f - (src[srcI] * scale), 0, 1f) * 255f);
+                data[i] = b;
+            }
+        }
+
+        public static JobHandle ScheduleRun(
+            NativeArray<float> src,
+            Texture2D texture,
+            ColorChannelByte target,
+            JobHandle deps,
+            float scale = 1f
+        ){
+            NativeSlice<byte> data = new NativeSlice<RGBA32>(texture.GetRawTextureData<RGBA32>()).SliceWithStride<byte>((int) target);
+            int meshRes = texture.height;
+            int dataRes = (int) sqrt(src.Length);
+            int offset = ((dataRes - meshRes) / 2);
+            // Debug.LogWarning($"{dataRes} >> {meshRes} + 2 * {offset}");
+            var job = new SetRGBA32InverseJob {
+                color = target,
+                src = src,
+                data = data,
+                dataRes = dataRes,
+                meshRes = meshRes,
+                offset = offset,
+                scale = scale
+            };
+            return job.ScheduleParallel(meshRes, 1, deps);
+        }
+    }
+
+    [BurstCompile(FloatPrecision.High, FloatMode.Fast, CompileSynchronously = true, DisableSafetyChecks = true)]
     public struct SetRGBA32Job : IJobFor
     {
         ColorChannelByte color;

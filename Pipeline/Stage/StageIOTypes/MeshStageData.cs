@@ -3,6 +3,8 @@ using System;
 using Unity.Collections;
 using UnityEngine;
 
+using xshazwar.noize.mesh;
+
 namespace xshazwar.noize.pipeline {
 
     [System.Serializable]
@@ -17,6 +19,7 @@ namespace xshazwar.noize.pipeline {
         public float tileHeight = 512f;
         public int xpos = 0;
         public int zpos = 0;
+        public MeshType meshType = MeshType.OvershootSquareGridHeightMap;
         public Mesh mesh;
     }
 }

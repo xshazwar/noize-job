@@ -37,7 +37,7 @@ namespace xshazwar.noize.geologic {
         MeshRenderer mRenderer;
         public Material referenceMat;
         Material updateMat;
-        IProvideGeodata geoProvider;
+        IProvideGeodata? geoProvider;
 
         public bool updateMaterial = false;
 
@@ -64,6 +64,10 @@ namespace xshazwar.noize.geologic {
         }
 
         void OnEnable(){
+            if(geoProvider == null){
+                geoProvider = GetComponent<IProvideGeodata>();
+                geoProvider.OnGeodataReady += ErosionReady;
+            }
             mRenderer = GetComponent<MeshRenderer>();
             InitBuffers();
             SetupMaterial();
@@ -122,10 +126,16 @@ namespace xshazwar.noize.geologic {
             DestroyImmediate(buffer0);
             buffer1.Release();
             DestroyImmediate(buffer1);
+            isSetup = false;
         }
 
         void OnDestroy(){
-            geoProvider.OnGeodataReady -= ErosionReady;
+            try {
+                geoProvider.OnGeodataReady -= ErosionReady;
+            }catch {
+                Debug.LogWarning("Could not deregister ErosionReady");
+            }
+            
         }
 
 

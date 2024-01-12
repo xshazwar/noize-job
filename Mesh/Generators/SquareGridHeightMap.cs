@@ -14,9 +14,9 @@ namespace xshazwar.noize.mesh.Generators {
 		public float NormalStrength {get; set;}
 		public float Height {get; set;}
 		public float TileSize {get; set;}
-		public int MarginPix {get; set;}
+		public int DataOverdraw {get; set;}
 
-		private float MarginPixF => (float) MarginPix;
+		private float DataOverdrawF => (float) DataOverdraw;
 		public Bounds Bounds => new Bounds(
 			new Vector3(0.5f * TileSize, 0.5f * Height, 0.5f * TileSize),
 			new Vector3(TileSize, Height, TileSize));
@@ -28,9 +28,9 @@ namespace xshazwar.noize.mesh.Generators {
 		public int JobLength => Resolution + 1;
 
 		public int Resolution { get; set; }
-		public int InputResolution { get; set; }
+		public int DataResolution { get; set; }
 
-		private int PixOffset => (int) ((InputResolution - Resolution) / 2) ;
+		private int PixOffset => (int) ((DataResolution - Resolution) / 2) ;
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private float InterpolateEdge(float a, float b){
@@ -40,17 +40,17 @@ namespace xshazwar.noize.mesh.Generators {
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private float MarginScale(int x, int z){
 			float h = 0f;
-			if (x < MarginPix){
-				h += (.0191f * Height * ((MarginPix - x ) / MarginPixF));
+			if (x < DataOverdraw){
+				h += (.0191f * Height * ((DataOverdraw - x ) / DataOverdrawF));
 			}
-			if (z < MarginPix){
-				h += (.0192f * Height * ((MarginPix - z ) / MarginPixF));
+			if (z < DataOverdraw){
+				h += (.0192f * Height * ((DataOverdraw - z ) / DataOverdrawF));
 			}
-			if (x > Resolution - MarginPix){
-				h +=  (.0193f * Height * (((MarginPix - (Resolution - x )) / (MarginPixF))));
+			if (x > Resolution - DataOverdraw){
+				h +=  (.0193f * Height * (((DataOverdraw - (Resolution - x )) / (DataOverdrawF))));
 			}
-			if (z > Resolution - MarginPix){
-				h +=  (.0194f * Height * (((MarginPix - (Resolution - z )) / (MarginPixF))));
+			if (z > Resolution - DataOverdraw){
+				h +=  (.0194f * Height * (((DataOverdraw - (Resolution - z )) / (DataOverdrawF))));
 			}
 			return h;
 		}
@@ -60,7 +60,7 @@ namespace xshazwar.noize.mesh.Generators {
             // overflows safely
             x = clamp(x, 0, Resolution + 1);
             z = clamp(z, 0, Resolution + 1);
-            return ((z + PixOffset) * InputResolution) + x + PixOffset;   
+            return ((z + PixOffset) * DataResolution) + x + PixOffset;   
         }
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

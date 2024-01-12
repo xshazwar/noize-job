@@ -15,6 +15,8 @@ namespace xshazwar.noize.mesh {
         public static Dictionary<int, Mesh> squareMeshCache = new Dictionary<int, Mesh>();
 
         static MeshJobScheduleDelegate meshJob = MeshJob<SharedSquareGridPosition, PositionStream32>.ScheduleParallel;
+        static MeshJobScheduleDelegate hexMeshJob = MeshJob<FlatHexagonalGrid, PositionStream32>.ScheduleParallel;
+    
         // private static Mesh makeSquarePlanarMesh(int resolution, float downscaleFactor = 1f){
             
         //     Mesh _mesh = new Mesh();
@@ -51,7 +53,8 @@ namespace xshazwar.noize.mesh {
             Mesh currentMesh = new Mesh();
             Mesh.MeshDataArray meshDataArray = Mesh.AllocateWritableMeshData(1);
             Mesh.MeshData meshData= meshDataArray[0];
-            meshJob(currentMesh, meshData, resolution, default(JobHandle), size, height).Complete();
+            // meshJob(currentMesh, meshData, resolution, default(JobHandle), size, height).Complete();
+            hexMeshJob(currentMesh, meshData, resolution, default(JobHandle), size, height).Complete();
             Mesh.ApplyAndDisposeWritableMeshData(meshDataArray, currentMesh,
                 MeshUpdateFlags.DontNotifyMeshUsers | MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds
             );

@@ -229,7 +229,7 @@ namespace xshazwar.noize.pipeline {
 
         public int CachedSize<T>(string name) where T: struct {
             int r = directory.GetCount(name, $"{typeof(T).Name}");
-            Debug.Log($"query for: {name} >> {typeof(T).Name} >> {r}");
+            Debug.Log($"Saved file query for: {name} >> {typeof(T).Name} >> {r > 0}");
             return r;
             
         }

@@ -2,6 +2,11 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 
+#if UNITY_EDITOR
+using UnityEditor;
+using UnityEditor.Compilation;
+#endif
+
 using UnityEngine;
 using UnityEngine.Profiling;
 using Unity.Collections;
@@ -12,7 +17,7 @@ namespace xshazwar.noize.pipeline {
 
     public class PipelineStateManager : MonoBehaviour { 
 
-        private Dictionary<Type, dynamic> states;
+        private Dictionary<Type, dynamic> states = null;
         private PipelineSerdeManager? savedState = null;
 
         public void SetSavePath(string saveName, string saveVersion){
@@ -25,6 +30,48 @@ namespace xshazwar.noize.pipeline {
 
         private void InitKVState<K, V, T>() where K: struct, IEquatable<K> where V : struct {
             states[typeof(T)] = ConstraintsKeyValue<K, V>.GetBufferManager<T>();
+        }
+
+        #if UNITY_EDITOR
+            // Methods for persisting Pipelinestate through Code Compilation
+            
+            private bool hasCached = false;
+
+            public void OnEnable(){
+                if(!hasCached){
+                    Debug.Log("Cache is empty");
+                    return;
+                }
+                Debug.Log("reloading buffers too late?");
+                NativeArray<int> _test = GetBuffer<int, NativeArray<int>>("__PARTERO_RESUME_TEST", 1, NativeArrayOptions.ClearMemory);
+                _test[0] = -2;
+            }
+
+
+            private void CacheBuffersBeforeRecompilation(object _){
+                hasCached = true;
+                Debug.Log("caching buffers before recompilation");
+            }
+            public void Awake(){
+                this.enabled = true;
+                hasCached = false;
+                CompilationPipeline.compilationStarted += CacheBuffersBeforeRecompilation;
+                Debug.Log("Recompilation Callbacks Created");
+            }
+
+        #endif
+
+        public void OnDestroy(){
+            Debug.Log("Destroying All unsaved buffers in PipelineState.");
+            if(states == null) return;
+            foreach(var kvp in states){
+                ((IBaseBufferManager)kvp.Value).Destroy();
+            }
+            #if UNITY_EDITOR
+                // deregister statically called callback
+                CompilationPipeline.compilationStarted -= CacheBuffersBeforeRecompilation;
+                Debug.Log("Recompilation Callbacks Destroyed");
+            #endif
         }
 
 /*
@@ -51,6 +98,7 @@ namespace xshazwar.noize.pipeline {
                     InitLinearState<V, T>();
                 }
                 IManageBuffer<T> manager = states[typeof(T)];
+                // allocate the buffer
                 T buffer;
                 if(options != NativeArrayOptions.UninitializedMemory){
                     buffer = (T) ((IManageBuffer<T>) states[typeof(T)]).GetBuffer(name, size, options);
@@ -60,6 +108,7 @@ namespace xshazwar.noize.pipeline {
                 }else{
                     buffer = (T) ((IManageBuffer<T>) states[typeof(T)]).GetBuffer(name);
                 }
+                // try to fill the buffer with a saved state from disk
                 if(savedState != null && ConstraintsLinear<V>.SERIALIZED_TYPES.Contains(typeof(T)) && !ignoreSaved){
                     int cacheSize = savedState.CachedSize<T>(name);
                     if(cacheSize > 0){
@@ -179,11 +228,5 @@ namespace xshazwar.noize.pipeline {
             return true;
         }
 
-        public void OnDestroy(){
-            if(states == null) return;
-            foreach(var kvp in states){
-                ((IBaseBufferManager)kvp.Value).Destroy();
-            }
-        }
     }
 }

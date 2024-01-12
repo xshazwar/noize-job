@@ -18,15 +18,10 @@ namespace xshazwar.noize.geologic {
     [AddComponentMenu("Noize/TileDrawer", 0)]
     public class TileDrawer : MonoBehaviour, IProvideGeodata {
 
+        [SerializeField]
         private TileRequest tileData;
+        [SerializeField]
         private TileSetMeta tileMeta;
-
-        // public int tileMeta.HEIGHT {get; private set;}
-        // public int tileMeta.TILE_SIZE.x {get; private set;}
-        // public int tileMeta.GENERATOR_RES.x {get; private set;}
-        // public int tileMeta.TILE_RES.x {get; private set;}
-        // public int tileMeta.MARGIN {get; private set;}
-
         public PipelineStateManager stateManager;
 
         public NativeArray<float> heightMap {get; private set;}
@@ -115,6 +110,7 @@ namespace xshazwar.noize.geologic {
         }
 
         public JobHandle ScheduleMeshUpdate(JobHandle dep){
+            // TODO Make this optionally a hex mesh
             meshDataArray = Mesh.AllocateWritableMeshData(1);
 			meshData = meshDataArray[0];
 			return HeightMapMeshJob<OvershootSquareGridHeightMap, PositionStream32>.ScheduleParallel(
